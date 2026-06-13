@@ -5,7 +5,6 @@
 set -euo pipefail
 export LC_ALL=C
 
-# defaults
 MIN_COUNT=10
 MAX_COUNT=500
 FOLD_THRESHOLD=5
@@ -19,13 +18,11 @@ TMPDIR_BASE="$(pwd)"
 SEED=42
 
 # log helpers
-# All log output goes to stderr to keep stdout clean for potential piping.
 info()    { echo "[Info] $*"    >&2; }
 output()  { echo "[Output] $*" >&2; }
 warn()    { echo "[Warning] $*" >&2; }
 error()   { echo "[Error] $*"  >&2; }
 
-# usage
 usage() {
     cat >&2 <<EOF
 
@@ -63,7 +60,6 @@ EOF
 
 [[ $# -eq 0 ]] && usage
 
-# argument parsing
 while [[ $# -gt 0 ]]; do
     case "$1" in
         -m|--male)           MALE_INPUT="$2";    shift 2 ;;
@@ -82,11 +78,9 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# validate mandatory arguments
 [[ -z "$MALE_INPUT" ]]   && { error "-m/--male files not specified.";   usage; }
 [[ -z "$FEMALE_INPUT" ]] && { error "-f/--female files not specified."; usage; }
 
-# validate options
 [[ "$MIN_COUNT" =~ ^[1-9][0-9]*$ ]] || {
     error "--min-count must be a positive integer."; exit 1; }
 
@@ -106,11 +100,9 @@ done
 [[ "$SEED" =~ ^[0-9]+$ ]] || {
     error "--seed must be a non-negative integer."; exit 1; }
 
-# validate directories
 [[ -d "$TMPDIR_BASE" ]] || { error "Temporary parent directory does not exist: $TMPDIR_BASE"; exit 1; }
 [[ -w "$TMPDIR_BASE" ]] || { error "Temporary parent directory is not writable: $TMPDIR_BASE"; exit 1; }
 
-# validate input files
 IFS=',' read -ra MALE_FILES   <<< "$MALE_INPUT"
 IFS=',' read -ra FEMALE_FILES <<< "$FEMALE_INPUT"
 
@@ -118,15 +110,12 @@ for f in "${MALE_FILES[@]}" "${FEMALE_FILES[@]}"; do
     [[ -r "$f" ]] || { error "Cannot read input file: $f"; exit 1; }
 done
 
-# check GNU sort
 if ! sort --version 2>&1 | grep -q 'GNU'; then
     error "GNU sort is required but not found. On macOS: brew install coreutils"
     exit 1
 fi
 
 # set up temp directory
-# TMPDIR_BASE : user-specified parent directory (--tmpdir)
-# SCAN_TMPDIR : actual working directory created for this run
 SCAN_TMPDIR="${TMPDIR_BASE}/sexmer_scan_tmp_$$"
 mkdir -p "$SCAN_TMPDIR"
 cleanup() { rm -rf "$SCAN_TMPDIR"; }
@@ -140,9 +129,6 @@ info "Temp dir  : ${SCAN_TMPDIR}"
 info "Male files  (${#MALE_FILES[@]}): ${MALE_FILES[*]}"
 info "Female files (${#FEMALE_FILES[@]}): ${FEMALE_FILES[*]}"
 
-# divide_mem
-# Split a memory string (e.g. 4G, 2048M) evenly across N parallel sort processes.
-# Returns megabytes with a minimum floor of 256M.
 divide_mem() {
     local mem="$1" n="$2"
     local num unit mb result
@@ -163,10 +149,6 @@ divide_mem() {
     fi
 }
 
-# open_file
-# Print the contents of a dump file to stdout, transparently decompressing
-# .gz files via gzip. No extra installation needed; gzip is standard on all
-# Linux and macOS systems.
 open_file() {
     local f="$1"
     if [[ "$f" == *.gz ]]; then
@@ -176,11 +158,6 @@ open_file() {
     fi
 }
 
-# aggregate_counts
-# Sort each input file independently in parallel, then merge with sort -m
-# (O(k·log n) merge vs O(N·k·log(N·k)) full re-sort). Counts for duplicate
-# k-mers are summed in a streaming awk pass.
-# Output: sorted "KMER POOLED_COUNT" file.
 aggregate_counts() {
     local label="$1" outfile="$2"
     shift 2
@@ -221,11 +198,6 @@ aggregate_counts() {
 }
 
 # build_consistency_index
-# Identify k-mers present in every file of a sex group. Per-file sorts run in
-# parallel; MEM and THREADS are divided across them to stay within budget.
-# Pre-sorted files are merged with sort -m, then uniq -c selects k-mers whose
-# occurrence count equals the total number of files.
-# Output: sorted list of k-mers passing the consistency requirement.
 build_consistency_index() {
     local label="$1" outfile="$2" n_files="$3"
     shift 3
@@ -268,7 +240,6 @@ build_consistency_index "male"   "$SCAN_TMPDIR/male_consistent.txt"   "$N_MALE" 
 build_consistency_index "female" "$SCAN_TMPDIR/female_consistent.txt" "$N_FEMALE" "${FEMALE_FILES[@]}"
 
 # STEP 3: Identify MSK candidates
-# Consistent in all males AND pooled count >= MIN_COUNT.
 info "Identifying MSK candidates (male-consistent, pooled count >= ${MIN_COUNT})..."
 
 join "$SCAN_TMPDIR/male_consistent.txt" "$SCAN_TMPDIR/male_agg.txt" \
@@ -287,8 +258,6 @@ join "$SCAN_TMPDIR/female_consistent.txt" "$SCAN_TMPDIR/female_agg.txt" \
 info "  $(wc -l < "$SCAN_TMPDIR/fsk_candidates.txt") FSK candidates before cross-sex filter."
 
 # STEP 5: Cross-sex exclusion
-# Remove MSK candidates present in any female, and FSK candidates present in any male.
-# All files are already sorted on k-mer sequence.
 info "Applying cross-sex exclusion filter..."
 
 awk '{print $1}' "$SCAN_TMPDIR/female_agg.txt" > "$SCAN_TMPDIR/female_kmers.txt"
@@ -303,12 +272,6 @@ info "  ${MSK_COUNT} true MSK k-mers after cross-sex filter."
 info "  ${FSK_COUNT} true FSK k-mers after cross-sex filter."
 
 # STEP 6: Build the full union count table
-# Field 0 (join key) is used as the kmer column so sex-specific k-mers on either
-# side are never replaced by the -e fill value.
-# The min/max-count filter is applied here to remove noise k-mers before
-# annotation. A k-mer is retained only when at least one sex has a pooled count
-# within [MIN_COUNT, MAX_COUNT]. This prevents low-count inconsistent k-mers
-# from appearing as neutral in the MSK/FSK/MBK/FBK regions of the scatter plot.
 info "Building full union count table (min-count=${MIN_COUNT}, max-count=${MAX_COUNT})..."
 
 join -a 1 -a 2 -e 0 -o 0,1.2,2.2 \
@@ -329,17 +292,6 @@ awk '{print $1}' "$SCAN_TMPDIR/msk_final.txt" > "$SCAN_TMPDIR/msk_kmers.txt"
 awk '{print $1}' "$SCAN_TMPDIR/fsk_final.txt" > "$SCAN_TMPDIR/fsk_kmers.txt"
 
 # STEP 7: Pre-compute MBK and FBK k-mer lists using disk-based join.
-# male_consistent.txt and female_consistent.txt can contain hundreds of millions
-# of k-mers for large genomes, making it infeasible to load them into awk arrays.
-# Instead, join intersects union_counts with each consistency index on disk (O(n),
-# near-zero RAM), and awk applies the fold-threshold arithmetic on the result.
-# The output mbk_kmers.txt and fbk_kmers.txt are small (same order as MSK/FSK),
-# so they can be loaded safely as arrays in the annotation pass below.
-#
-# MBK: male-consistent in union, fc > 0, mc >= ft * fc, not already MSK.
-# FBK: female-consistent in union, mc > 0, fc >= ft * mc, not already FSK.
-# union_counts.txt fields: kmer mc fc (space-separated, sorted by kmer).
-# male_consistent.txt / female_consistent.txt: single kmer column, sorted.
 info "Pre-computing MBK/FBK candidates using disk-based join..."
 
 join "$SCAN_TMPDIR/male_consistent.txt" "$SCAN_TMPDIR/union_counts.txt" \
@@ -356,10 +308,6 @@ info "  $(wc -l < "$SCAN_TMPDIR/mbk_kmers.txt") MBK candidates."
 info "  $(wc -l < "$SCAN_TMPDIR/fbk_kmers.txt") FBK candidates."
 
 # STEP 8: Annotate categories in a single awk pass
-# Only the four small k-mer sets (MSK, FSK, MBK, FBK) are loaded into arrays.
-# union_counts.txt is streamed once. The neutral condition is pure arithmetic
-# and requires no array lookup, identical to the original classification logic.
-# Classification priority: MSK > FSK > MBK > FBK > neutral.
 info "Annotating k-mers with categories..."
 
 awk -v ft="$FOLD_THRESHOLD" \
@@ -393,11 +341,8 @@ awk -v ft="$FOLD_THRESHOLD" \
 info "  $(wc -l < "$SCAN_TMPDIR/annotated_all.txt") total annotated k-mers."
 
 # STEP 9: Split categories and sub-sample neutral k-mers
-# Non-neutral categories are never sub-sampled. Sub-sampling uses a streaming
-# reservoir with a configurable seed for reproducibility.
 info "Splitting categories and sub-sampling neutral k-mers if needed..."
 
-# Pre-create both files so wc -l succeeds even if a category has zero k-mers.
 : > "$SCAN_TMPDIR/neutral_all.txt"
 : > "$SCAN_TMPDIR/non_neutral.txt"
 
@@ -414,10 +359,6 @@ info "  ${NEUTRAL_TOTAL} neutral k-mers before sub-sampling."
 
 if [[ "$NEUTRAL_MAX" -gt 0 && "$NEUTRAL_TOTAL" -gt "$NEUTRAL_MAX" ]]; then
     info "  Sub-sampling neutral k-mers to ${NEUTRAL_MAX} (seed=${SEED})..."
-    # Portable LCG (Numerical Recipes: a=1664525, c=1013904223, m=2^32).
-    # Avoids srand()/rand() because mawk ignores the srand seed, making
-    # results non-reproducible across runs. All intermediate values stay
-    # below 2^53 so IEEE 754 double arithmetic is exact.
     awk -v max="$NEUTRAL_MAX" -v total="$NEUTRAL_TOTAL" -v seed="$SEED" '
     BEGIN { _a=1664525; _c=1013904223; _m=4294967296; _rng=seed+0 }
     function _rand() { _rng=(_a*_rng+_c)%_m; return _rng/_m }
@@ -438,8 +379,6 @@ else
 fi
 
 # STEP 10: Write main TSV output
-# Concatenate non-neutral and neutral rows with header. 
-# output order follows the union table order which is already sorted by k-mer.
 TSV_OUT="${PREFIX}.kmers.tsv"
 info "Writing main TSV output..."
 
@@ -451,9 +390,6 @@ info "Writing main TSV output..."
 output "Main k-mer table written to: ${TSV_OUT}"
 
 # STEP 11: Write FASTA outputs
-# Extract MSK and FSK sequences directly from their final filtered files.
-# msk_final.txt and fsk_final.txt contain "KMER COUNT" (space-separated),
-# so count is available without re-reading the TSV.
 MSK_FA="${PREFIX}.MSK.fa"
 FSK_FA="${PREFIX}.FSK.fa"
 
@@ -471,7 +407,6 @@ output "MSK sequences written to: ${MSK_FA}"
 output "FSK sequences written to: ${FSK_FA}"
 
 # Step 12: Tally category counts
-# Single awk pass over the TSV to count per-category totals.
 info "Tallying category counts..."
 
 declare -A CAT_COUNTS
@@ -483,7 +418,6 @@ MSK_N=${CAT_COUNTS[MSK]:-0}
 FSK_N=${CAT_COUNTS[FSK]:-0}
 MBK_N=${CAT_COUNTS[MBK]:-0}
 FBK_N=${CAT_COUNTS[FBK]:-0}
-
 
 info "SEXmer scan complete."
 info "  MSK     : ${MSK_N}"
