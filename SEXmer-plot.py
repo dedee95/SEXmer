@@ -28,16 +28,11 @@ COLORS = {
 
 CATEGORY_ORDER = ['FSK', 'MSK', 'FBK', 'MBK', 'neutral']
 
-
-# log helpers
-# All log output goes to stderr to keep stdout clean for potential piping.
 def info(msg):   print(f"[Info] {msg}",    file=sys.stderr)
 def output(msg): print(f"[Output] {msg}",  file=sys.stderr)
 def warn(msg):   print(f"[Warning] {msg}", file=sys.stderr)
 def error(msg):  print(f"[Error] {msg}",   file=sys.stderr)
 
-
-# usage
 def usage():
     print("""
 SEXmer-plot.py - Generate publication-ready figures from SEXmer scan output.
@@ -58,9 +53,6 @@ Output files:
 """, file=sys.stderr)
     sys.exit(1)
 
-
-# fmt_num
-# Format an integer with K/M suffix for axis labels and bar annotations.
 def fmt_num(n):
     if n >= 1_000_000:
         return f"{n/1_000_000:.2f}M"
@@ -68,19 +60,12 @@ def fmt_num(n):
         return f"{n/1_000:.1f}K"
     return str(int(n))
 
-
-# clean_axes
-# Remove top/right spines and thicken the remaining two for a clean look.
 def clean_axes(ax):
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
     ax.spines['left'].set_linewidth(1.5)
     ax.spines['bottom'].set_linewidth(1.5)
 
-
-# load_data
-# Read only the three columns needed for plotting; the kmer sequence column
-# is intentionally skipped to reduce RAM usage.
 def load_data(path):
     info("Reading input data...")
     try:
@@ -100,10 +85,7 @@ def load_data(path):
     info(f"Loaded {len(df):,} k-mers.")
     return df
 
-
 # scatter_panel
-# Male count (x) vs female count (y) coloured by category.
-# Uses numpy boolean masking directly on arrays to avoid repeated DataFrame copies.
 def scatter_panel(ax, mc, fc, cats):
     STYLE = {
         'MSK':     dict(s=35, alpha=0.80, zorder=5),
@@ -148,9 +130,7 @@ def scatter_panel(ax, mc, fc, cats):
     clean_axes(ax)
     ax.tick_params(axis='both', labelsize=10)
 
-
 # bar_panel
-# FSK vs MSK k-mer counts shown as a simple bar chart.
 def bar_panel(ax, df):
     counts = [len(df[df['category'] == c]) for c in ('FSK', 'MSK')]
     bars   = ax.bar(['FSK', 'MSK'], counts, color=[COLORS['FSK'], COLORS['MSK']],
@@ -171,9 +151,7 @@ def bar_panel(ax, df):
     ax.tick_params(axis='x', labelsize=11)
     ax.tick_params(axis='y', labelsize=10)
 
-
 # create_sexplot
-# Dual-panel figure: scatter (left, 2/3 width) + bar chart (right, 1/3 width).
 def create_sexplot(df, out_path):
     info("Generating sex-specific k-mer scatter + bar plot...")
 
@@ -191,18 +169,13 @@ def create_sexplot(df, out_path):
     plt.close(fig)
     output(f"Sex plot written to: {out_path}")
 
-
 # add_reflines
-# Three dashed reference lines: 1:1 (red), 2:1 female-biased (blue), 1:2 male-biased (green).
 def add_reflines(ax, lim):
     xv = np.array([0.0, lim])
     ax.plot(xv, xv * 1.0, color='red',   lw=1.5, ls='--', zorder=5, label='1:1')
     ax.plot(xv, xv * 2.0, color='blue',  lw=1.5, ls='--', zorder=5, label='2:1 (female-biased)')
     ax.plot(xv, xv * 0.5, color='green', lw=1.5, ls='--', zorder=5, label='1:2 (male-biased)')
 
-
-# format_abundance_ax
-# Shared axis formatting for both abundance panels.
 def format_abundance_ax(ax, lim):
     ax.set_xlim(0, lim)
     ax.set_ylim(0, lim)
@@ -211,10 +184,6 @@ def format_abundance_ax(ax, lim):
     ax.set_aspect('equal')
     clean_axes(ax)
 
-
-# smooth_density
-# 2-D histogram smoothed with a Gaussian kernel and rendered as an image,
-# mirroring R's smoothScatter style. Square-root scaling improves display contrast.
 def smooth_density(ax, x, y, lim, bins=400, sigma=3):
     h, _, _   = np.histogram2d(x, y, bins=[bins, bins], range=[[0, lim], [0, lim]])
     h_smooth  = gaussian_filter(h, sigma=sigma)
@@ -227,10 +196,7 @@ def smooth_density(ax, x, y, lim, bins=400, sigma=3):
     ax.imshow(h_display.T, origin='lower', aspect='equal',
               extent=[0, lim, 0, lim], cmap=cmap, interpolation='bilinear')
 
-
 # create_abundance_plot
-# Two-panel figure: raw scatter (left) + smooth 2-D density (right).
-# Axis limit is set to the 99th percentile of the data, robust to outliers.
 def create_abundance_plot(df, out_path):
     info("Generating abundance scatter + density plot...")
 
@@ -256,7 +222,6 @@ def create_abundance_plot(df, out_path):
     plt.close(fig)
     output(f"Abundance plot written to: {out_path}")
 
-
 # argument parsing
 def parse_args():
     parser = argparse.ArgumentParser(add_help=False)
@@ -265,7 +230,6 @@ def parse_args():
     parser.add_argument('--format',       choices=['png', 'pdf'], default='png')
     parser.add_argument('-h', '--help',   action='store_true')
     return parser.parse_args()
-
 
 def main():
     args = parse_args()
@@ -290,7 +254,6 @@ def main():
     create_abundance_plot(df, f"{prefix}_abundance.{fmt}")
 
     info("SEXmer-plot complete.")
-
 
 if __name__ == "__main__":
     main()
