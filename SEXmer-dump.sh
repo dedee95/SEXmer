@@ -16,14 +16,11 @@ TMPDIR_BASE="$(pwd)"
 KMC_BIN=""
 READS=()
 
-# log helpers
-# All log output goes to stderr to keep stdout clean for potential piping.
 info()    { echo "[Info] $*"    >&2; }
 output()  { echo "[Output] $*" >&2; }
 warn()    { echo "[Warning] $*" >&2; }
 error()   { echo "[Error] $*"  >&2; }
 
-# usage
 usage() {
     cat >&2 <<EOF
 
@@ -69,7 +66,6 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# validate mandatory arguments
 [[ -z "$PREFIX" ]] && { error "--prefix is required."; usage; }
 
 [[ ${#READS[@]} -eq 0 ]] && { error "At least one input read file is required."; usage; }
@@ -77,7 +73,6 @@ done
 [[ ${#READS[@]} -gt 2 ]] && {
     error "At most two read files (paired-end) are accepted. Got: ${READS[*]}"; exit 1; }
 
-# validate options
 [[ "$KMER_SIZE" =~ ^[1-9][0-9]*$ ]] && [[ "$KMER_SIZE" -le 63 ]] || {
     error "--kmer-size must be an integer between 1 and 63."; exit 1; }
 
@@ -96,46 +91,34 @@ if [[ -n "$TRIGGER_SEQ" ]]; then
     TRIGGER_SEQ="${TRIGGER_SEQ^^}"
 fi
 
-# validate --kmc-bin directory if provided
 if [[ -n "$KMC_BIN" ]]; then
     [[ -d "$KMC_BIN" ]] || { error "--kmc-bin directory does not exist: ${KMC_BIN}"; exit 1; }
     export PATH="${KMC_BIN}:${PATH}"
 fi
 
-# validate directories
 [[ -d "$TMPDIR_BASE" ]] || { error "Temporary parent directory does not exist: ${TMPDIR_BASE}"; exit 1; }
 [[ -w "$TMPDIR_BASE" ]] || { error "Temporary parent directory is not writable: ${TMPDIR_BASE}"; exit 1; }
 
-# validate output directory derived from prefix
-# dirname returns "." for bare prefixes — resolve to the actual current directory.
 OUT_DIR="$(dirname "$PREFIX")"
 [[ "$OUT_DIR" == "." ]] && OUT_DIR="$(pwd)"
 [[ -d "$OUT_DIR" ]] || { error "Output directory does not exist: ${OUT_DIR}"; exit 1; }
 [[ -w "$OUT_DIR" ]] || { error "Output directory is not writable: ${OUT_DIR}"; exit 1; }
 
-# validate input files
 for f in "${READS[@]}"; do
     [[ -r "$f" ]] || { error "Cannot read input file: $f"; exit 1; }
 done
 
-# check KMC binaries
 for bin in kmc kmc_dump; do
     command -v "$bin" &>/dev/null || {
         error "'${bin}' not found on PATH. Install KMC: conda install bioconda::kmc"
         exit 1; }
 done
 
-# set up temp directory
-# TMPDIR_BASE : user-specified parent directory (--tmpdir)
-# DUMP_TMPDIR : actual working directory created for this run
 DUMP_TMPDIR="${TMPDIR_BASE}/sexmer_dump_tmp_$$"
 mkdir -p "$DUMP_TMPDIR"
 cleanup() { rm -rf "$DUMP_TMPDIR"; }
 trap cleanup EXIT
 
-# mem_to_kmc_gb
-# KMC -m flag expects an integer in GB. Convert the user-supplied MEM string
-# (e.g. 16G, 512M) to a ceiling GB value with a minimum of 1.
 mem_to_kmc_gb() {
     local mem="$1"
     local num unit
@@ -152,10 +135,8 @@ mem_to_kmc_gb() {
 }
 KMC_MEM_GB=$(mem_to_kmc_gb "$MEM")
 
-# derive output path from prefix
 OUTPUT="${PREFIX}.dump.gz"
 
-# log run parameters
 info "SEXmer-dump starting"
 info "Parameters : kmer-size=${KMER_SIZE}, min-count=${MIN_COUNT}, mem=${MEM}, threads=${THREADS}"
 info "Trigger-seq: ${TRIGGER_SEQ:-off}"
@@ -164,7 +145,6 @@ info "Output     : ${OUTPUT}"
 info "Temp dir   : ${DUMP_TMPDIR}"
 
 # STEP 1: Build KMC file-of-files
-# KMC requires a plain text file listing input FASTQ paths, one per line.
 info "Building KMC input file list..."
 
 FILES_LIST="${DUMP_TMPDIR}/input_files.lst"
@@ -173,15 +153,6 @@ printf '%s\n' "${READS[@]}" > "$FILES_LIST"
 info "  ${#READS[@]} file(s) listed."
 
 # STEP 2: Run KMC
-# -k   k-mer size
-# -ci  minimum count (discard k-mers below this threshold at counting time)
-# -m   RAM in GB
-# -t   threads
-# Format flag (-fm/-fq) is intentionally omitted: when input is supplied via
-# a @file-of-files, KMC auto-detects format from each file's extension
-# (.fq, .fastq, .fq.gz, .fastq.gz). Passing -fm in this mode overrides
-# auto-detection and causes "Wrong input file" errors for some extensions.
-# KMC writes two files: <db_prefix>.kmc_pre and <db_prefix>.kmc_suf
 KMC_DB="${DUMP_TMPDIR}/kmc_db"
 KMC_TMP="${DUMP_TMPDIR}/kmc_tmp"
 mkdir -p "$KMC_TMP"
@@ -204,8 +175,6 @@ kmc \
 info "KMC database built successfully."
 
 # STEP 3: Dump k-mers to text
-# kmc_dump writes space-separated KMER COUNT, one per line, sorted by k-mer.
-# -ci is repeated here as a safety net in case KMC -ci behaved unexpectedly.
 RAW_DUMP="${DUMP_TMPDIR}/raw_dump.txt"
 
 info "Dumping k-mers from KMC database..."
@@ -223,8 +192,6 @@ RAW_COUNT=$(wc -l < "$RAW_DUMP")
 info "  ${RAW_COUNT} k-mers in raw dump."
 
 # STEP 4: Apply trigger-seq filter (optional)
-# Streaming awk pass that keeps only k-mers whose sequence starts with the
-# required prefix. No intermediate file is created when the filter is off.
 if [[ -n "$TRIGGER_SEQ" ]]; then
     info "Applying trigger-seq filter: keeping k-mers starting with '${TRIGGER_SEQ}'..."
     FILTERED_DUMP="${DUMP_TMPDIR}/filtered_dump.txt"
@@ -240,8 +207,6 @@ else
 fi
 
 # STEP 5: Write gzip-compressed output
-# gzip -1 (fastest compression) keeps the file small while minimising wall time.
-# The output is compatible with gzip -dc used in SEXmer-scan.sh open_file().
 info "Writing gzip-compressed output..."
 gzip -1 -c "$FINAL_DUMP" > "$OUTPUT"
 
