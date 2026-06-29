@@ -234,6 +234,38 @@ def window_starts(seq_len: int, k: int, step: int) -> List[int]:
     return list(range(0, seq_len - k + 1, step))
 
 
+def count_valid_sites_for_window(
+    q_start: int,
+    q_end: int,
+    intervals: Sequence[Tuple[int, int]],
+    start_hint: int,
+) -> Tuple[int, int]:
+    """Count valid k-mer start sites in [q_start, q_end] inclusive.
+
+    intervals are sorted inclusive [start, end] valid k-mer-start intervals
+    derived from contiguous ACGT runs. start_hint lets consecutive windows avoid
+    rescanning old intervals.
+    """
+    if q_end < q_start:
+        return 0, start_hint
+
+    n = len(intervals)
+    i = start_hint
+    while i < n and intervals[i][1] < q_start:
+        i += 1
+    new_hint = i
+
+    total = 0
+    while i < n and intervals[i][0] <= q_end:
+        a, b = intervals[i]
+        left = q_start if q_start > a else a
+        right = q_end if q_end < b else b
+        if right >= left:
+            total += right - left + 1
+        i += 1
+    return total, new_hint
+
+
 def scan_chrom_int2bit(
     chrom: str,
     seq: str,
@@ -249,12 +281,14 @@ def scan_chrom_int2bit(
 
     valid_kmers = 0
     total_hits = 0
+    valid_intervals: List[Tuple[int, int]] = []
 
     if seq_len >= k and nwin > 0:
         mask = (1 << (2 * k)) - 1
         span = window - k
         code = 0
         run = 0
+        run_start = 0
 
         # Local variable binding reduces Python lookup overhead in the inner loop.
         base_code_get = BASE_CODE.get
@@ -265,14 +299,20 @@ def scan_chrom_int2bit(
         k_local = k
         mask_local = mask
         span_local = span
+        valid_intervals_append = valid_intervals.append
 
         for pos, base in enumerate(seq):
             val = base_code_get(base)
             if val is None:
+                if run >= k_local:
+                    valid_intervals_append((run_start, pos - k_local))
                 code = 0
                 run = 0
+                run_start = pos + 1
                 continue
 
+            if run == 0:
+                run_start = pos
             code = ((code << 2) | val) & mask_local
             run += 1
             if run < k_local:
@@ -307,23 +347,29 @@ def scan_chrom_int2bit(
                 if kmer_start <= end - k_local:
                     counts_local[idx] += 1
 
+        if run >= k_local:
+            valid_intervals_append((run_start, seq_len - k_local))
+
     total_possible = max(seq_len - k + 1, 0)
     skipped_non_acgt = total_possible - valid_kmers
 
     rows: List[str] = []
+    interval_hint = 0
     for idx, start in enumerate(starts):
         end = start + window
         if end > seq_len:
             end = seq_len
-        effective = end - start - k + 1
-        if effective < 0:
-            effective = 0
+        valid_sites, interval_hint = count_valid_sites_for_window(
+            start, end - k, valid_intervals, interval_hint
+        )
         hits = counts[idx]
-        density = (hits / effective) if effective > 0 else 0.0
-        rows.append(f"{chrom}\t{start}\t{end}\t{hits}\t{density:.10g}\n")
+        density = (hits / valid_sites) if valid_sites > 0 else 0.0
+        hits_per_10kb = density * 10000.0
+        rows.append(
+            f"{chrom}\t{start}\t{end}\t{hits}\t{valid_sites}\t{density:.10g}\t{hits_per_10kb:.10g}\n"
+        )
 
     return chrom, nwin, valid_kmers, skipped_non_acgt, total_hits, "".join(rows)
-
 
 def init_worker(markers: set, k: int, window: int, step: int) -> None:
     global _G_MARKERS, _G_K, _G_WINDOW, _G_STEP
@@ -359,7 +405,7 @@ def run_scan(
     total_hits = 0
 
     with open(out_path, "w") as out:
-        out.write("chrom\tstart\tend\thits\tdensity\n")
+        out.write("chrom\tstart\tend\thits\tvalid_kmers\tdensity\thits_per_10kb\n")
 
         if threads <= 1:
             for chrom, seq in parse_fasta(genome):
@@ -461,6 +507,7 @@ info "Output     : ${OUT_TSV}"
 info "Temp dir   : ${MAPPING_TMPDIR}"
 info "Coordinate : 0-based, half-open windows"
 info "Strand mode: forward + reverse-complement marker lookup"
+info "Normalize  : density=hits/valid_kmers; hits_per_10kb=density*10000"
 
 info "Running coordinate-aware k-mer window scanner..."
 python3 "$SCANNER" \
