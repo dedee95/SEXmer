@@ -26,7 +26,7 @@ error()   { echo "[Error] $*"  >&2; }
 usage() {
     cat >&2 <<EOF
 
-SEXmer-map.sh - Map SEXmer marker k-mers and optional extracted reads to reference genome windows.
+SEXmer-map.sh - Map SEXmer marker k-mers and optional extracted reads to reference genome.
 
 Usage: SEXmer-map.sh <genome.fa> <markers.fa> --prefix <prefix> [OPTIONS]
 
