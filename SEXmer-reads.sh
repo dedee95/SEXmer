@@ -7,7 +7,7 @@ export LC_ALL=C
 
 # defaults
 KMER_SIZE=21
-MIN_HIT=1
+MIN_HIT=3
 THREADS=8
 PREFIX=""
 TMPDIR_BASE="$(pwd)"
@@ -47,7 +47,6 @@ Optionals:
 EOF_USAGE
     exit 1
 }
-
 [[ $# -eq 0 ]] && usage
 
 POSITIONAL=()
@@ -389,52 +388,36 @@ else
     if [[ ${#READS[@]} -eq 2 ]]; then
         info "  Filename pair pattern: ${FILENAME_PAIR}"
         info "  Header ID agreement  : ${HEADER_SAME}/${HEADER_TOTAL} sampled records"
-        warn "Two input files were provided but did not look like a pair; they will be streamed as single/long-read input."
-    else
-        info "  Input files: ${#READS[@]}"
+        error "Two input files were provided but did not look like a paired-end R1/R2 set."
+        error "For long-read or unpaired mode, provide only one FASTQ file per SEXmer-reads run."
+        exit 1
     fi
+
+    if [[ ${#READS[@]} -gt 1 ]]; then
+        error "Multiple unpaired/long-read files are not supported in one SEXmer-reads run."
+        error "Please run SEXmer-reads separately for each long-read FASTQ file."
+        exit 1
+    fi
+
+    info "  Input files: ${#READS[@]}"
     info "  Read rule  : write read if it has >= ${MIN_HIT} exact marker hit(s)"
 
-    if [[ ${#READS[@]} -eq 1 ]]; then
-        TMP_OUT="${READS_TMPDIR}/matched.fq"
-        info "Running BBDuk single-file extraction..."
-        run_bbduk_logged "$BBDUK_LOG" \
-            bbduk.sh \
-                in="${READS[0]}" \
-                outm="$TMP_OUT" \
-                ref="$MARKERS" \
-                k="$KMER_SIZE" \
-                hdist=0 \
-                minhits="$MIN_HIT" \
-                threads="$THREADS"
+    TMP_OUT="${READS_TMPDIR}/matched.fq"
+    info "Running BBDuk single-file extraction..."
+    run_bbduk_logged "$BBDUK_LOG" \
+        bbduk.sh \
+            in="${READS[0]}" \
+            outm="$TMP_OUT" \
+            ref="$MARKERS" \
+            k="$KMER_SIZE" \
+            hdist=0 \
+            minhits="$MIN_HIT" \
+            threads="$THREADS"
 
-        [[ -f "$TMP_OUT" ]] || { error "BBDuk did not produce matched read output."; exit 1; }
+    [[ -f "$TMP_OUT" ]] || { error "BBDuk did not produce matched read output."; exit 1; }
 
-        info "Writing gzip-compressed output with gzip -1..."
-        gzip -1 -c "$TMP_OUT" > "$OUT"
-    else
-        info "Running BBDuk streaming extraction for ${#READS[@]} unpaired input files..."
-        if ! stream_files "${READS[@]}" \
-            | bbduk.sh \
-                in=stdin.fq \
-                outm=stdout.fq \
-                ref="$MARKERS" \
-                k="$KMER_SIZE" \
-                hdist=0 \
-                minhits="$MIN_HIT" \
-                threads="$THREADS" \
-                2> "$BBDUK_LOG" \
-            | gzip -1 > "$OUT"; then
-            while IFS= read -r line; do
-                info "  [bbduk] $line"
-            done < "$BBDUK_LOG"
-            error "BBDuk streaming extraction failed."
-            exit 1
-        fi
-        while IFS= read -r line; do
-            info "  [bbduk] $line"
-        done < "$BBDUK_LOG"
-    fi
+    info "Writing gzip-compressed output with gzip -1..."
+    gzip -1 -c "$TMP_OUT" > "$OUT"
 
     [[ -f "$OUT" ]] || { error "Expected output file was not created: ${OUT}"; exit 1; }
 
