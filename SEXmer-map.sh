@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SEXmer-map_v2.sh - Map SEXmer marker k-mers and optional reads using BBMap binned coverage.
+# SEXmer-map.sh - Map SEXmer marker k-mers and optional extracted reads to reference genome.
 # Author: Dede Kurniawan
 
 set -euo pipefail
@@ -26,9 +26,9 @@ error()   { echo "[Error] $*"  >&2; }
 usage() {
     cat >&2 <<EOF
 
-SEXmer-map_v2.sh - Map SEXmer marker k-mers and optional reads to reference genome windows.
+SEXmer-map.sh - Map SEXmer marker k-mers and optional extracted reads to reference genome windows.
 
-Usage: SEXmer-map_v2.sh <genome.fa> <markers.fa> --prefix <prefix> [OPTIONS]
+Usage: SEXmer-map.sh <genome.fa> <markers.fa> --prefix <prefix> [OPTIONS]
 
 Mandatory:
   <genome.fa>          Reference genome FASTA (.fa, .fasta, optionally .gz)
@@ -36,15 +36,14 @@ Mandatory:
   --prefix             Output filename prefix
 
 Optionals:
-  -k, --kmer-size      K-mer size (1-63)                                [default: ${KMER_SIZE}]
-  -w, --window         Window size in bp                                [default: ${WINDOW}]
-  -s, --step           Sliding step size in bp for k-mer mapping only   [default: ${STEP}]
-  -r, --reads          Raw reads in FASTQ or gziped, separated by comma. 
+  -k, --kmer-size      K-mer size (1-63)                               [default: ${KMER_SIZE}]
+  -w, --window         Window size in bp                               [default: ${WINDOW}]
+  -s, --step           Sliding step size in bp                         [default: ${STEP}]
+  -r, --reads          Comma-separated FASTQ file(s) for BBMap validation
                        Examples: -r reads.fq.gz OR -r reads_1.fq.gz,reads_2.fq.gz
-                       Read coverage uses BBMap covbinsize=--window; --step is ignored for reads.
-  --seq-type           Read technology: auto, short, ONT, PacBio        [default: ${SEQ_TYPE}]
-  -t, --threads        CPU threads                                      [default: ${THREADS}]
-  --tmpdir             Parent directory for temporary work folder       [default: current dir]
+  --seq-type           Read technology: auto, short, ONT, PacBio       [default: ${SEQ_TYPE}]
+  -t, --threads        CPU threads                                     [default: ${THREADS}]
+  --tmpdir             Parent directory for temporary work folder      [default: current dir]
   -h, --help           Show this help and exit
 
 EOF
@@ -142,8 +141,10 @@ cat > "$SCANNER" <<'PY'
 #!/usr/bin/env python3
 import argparse
 import gzip
+import math
 import multiprocessing as mp
 import os
+import re
 import sys
 from typing import Dict, Iterator, List, Optional, Sequence, Tuple
 
@@ -152,6 +153,10 @@ BASE_CODE: Dict[str, int] = {
     "a": 0, "c": 1, "g": 2, "t": 3,
 }
 RC_TRANS = str.maketrans("ACGTacgt", "TGCAtgca")
+CIGAR_RE = re.compile(r"(\d+)([MIDNSHP=X])")
+REF_CONSUME = {"M", "D", "N", "=", "X"}
+QUERY_ALIGNED = {"M", "=", "X"}
+
 _G_MARKERS: Optional[set] = None
 _G_K: Optional[int] = None
 _G_WINDOW: Optional[int] = None
@@ -381,146 +386,141 @@ def run_kmer_scan(genome: str, markers: set, k: int, window: int, step: int, thr
                 total_bases += len(seq)
     return chrom_count, total_bases, total_windows, total_valid_kmers, total_skipped_n, total_hits
 
-def normalize_header_name(name: str) -> str:
-    return name.strip().lower().lstrip("#").replace(" ", "_").replace("-", "_")
+def parse_cigar_blocks(pos0: int, cigar: str) -> Tuple[List[Tuple[int, int]], int, int]:
+    """Return query-aligned reference blocks [start,end), reference span start/end."""
+    ref = pos0
+    span_start = pos0
+    blocks: List[Tuple[int, int]] = []
+    for length_s, op in CIGAR_RE.findall(cigar):
+        length = int(length_s)
+        if op in QUERY_ALIGNED:
+            if length > 0:
+                blocks.append((ref, ref + length))
+            ref += length
+        elif op in {"D", "N"}:
+            ref += length
+        elif op in {"I", "S", "H", "P"}:
+            continue
+        else:
+            continue
+    return blocks, span_start, ref
 
-def parse_depth_value(value: str) -> float:
-    value = value.strip()
-    if value.endswith("%"):
-        value = value[:-1]
-    return float(value)
-
-def choose_column(header: Sequence[str], candidates: Sequence[str]) -> Optional[int]:
-    normalized = [normalize_header_name(x) for x in header]
-    for cand in candidates:
-        if cand in normalized:
-            return normalized.index(cand)
-    return None
-
-def read_bbmap_bincov_rows(path: str) -> List[Tuple[str, int, int, float]]:
-    """Read BBMap binned coverage rows as (reference, start_raw, end_raw, depth)."""
-    rows: List[Tuple[str, int, int, float]] = []
-    seq_i = start_i = end_i = depth_i = None
-
-    with open_text(path) as fh:
-        for raw in fh:
-            line = raw.strip()
-            if not line:
-                continue
-            parts = line.split("\t")
-            if len(parts) == 1:
-                parts = line.split()
-            if not parts:
-                continue
-
-            first = parts[0]
-            first_is_comment = first.startswith("#")
-            numeric_second = len(parts) > 1 and parts[1].lstrip("+-").replace(".", "", 1).isdigit()
-
-            if first_is_comment and not numeric_second:
-                header = parts
-                seq_i = choose_column(header, ["id", "name", "ref", "reference", "scaffold", "chrom", "chr", "rname"])
-                start_i = choose_column(header, ["start", "bin_start", "from", "pos", "position"])
-                end_i = choose_column(header, ["end", "stop", "bin_end", "to"])
-                depth_i = choose_column(header, ["depth", "mean_depth", "avg_depth", "avg_fold", "average", "coverage", "cov", "mean", "avg"])
-                continue
-
-            if seq_i is None or start_i is None or end_i is None or depth_i is None:
-                if len(parts) < 4:
-                    continue
-                seq_i, start_i, end_i, depth_i = 0, 1, 2, 3
-
-            try:
-                ref = parts[seq_i].lstrip("#")
-                start_raw = int(float(parts[start_i]))
-                end_raw = int(float(parts[end_i]))
-                depth = parse_depth_value(parts[depth_i])
-            except Exception:
-                continue
-
-            if ref and end_raw > start_raw and depth >= 0:
-                rows.append((ref, start_raw, end_raw, depth))
-
-    if not rows:
-        raise ValueError(f"No usable binned coverage rows found in BBMap output: {path}")
-    return rows
-
-def load_chunk_map(path: Optional[str]) -> Dict[str, Tuple[str, int]]:
-    chunk_map: Dict[str, Tuple[str, int]] = {}
-    if not path:
-        return chunk_map
-    if not os.path.exists(path) or os.path.getsize(path) == 0:
-        return chunk_map
-    with open(path) as fh:
-        next(fh, None)
-        for raw in fh:
-            parts = raw.rstrip("\n").split("\t")
-            if len(parts) < 4:
-                continue
-            chunk, original, start_s, _end_s = parts[:4]
-            try:
-                chunk_map[chunk] = (original, int(start_s))
-            except ValueError:
-                continue
-    return chunk_map
-
-def add_depth_interval(weighted_bases: List[float], chrom_len: int, start: int, end: int, depth: float, window: int) -> None:
-    if end <= start or not weighted_bases:
+def add_interval_bases(arr: List[int], chrom_len: int, start: int, end: int, window: int, step: int) -> None:
+    if end <= start or not arr:
         return
-    start = max(0, start)
-    end = min(chrom_len, end)
+    if start < 0:
+        start = 0
+    if end > chrom_len:
+        end = chrom_len
     if end <= start:
         return
-    i_min = start // window
-    i_max = (end - 1) // window
-    if i_max >= len(weighted_bases):
-        i_max = len(weighted_bases) - 1
+
+    i_min = 0 if start < window else (start - window) // step + 1
+    i_max = (end - 1) // step
+    if i_max >= len(arr):
+        i_max = len(arr) - 1
     for idx in range(i_min, i_max + 1):
-        w_start = idx * window
-        w_end = min(w_start + window, chrom_len)
+        w_start = idx * step
+        w_end = w_start + window
+        if w_end > chrom_len:
+            w_end = chrom_len
         ov = min(end, w_end) - max(start, w_start)
         if ov > 0:
-            weighted_bases[idx] += depth * ov
+            arr[idx] += ov
 
-def run_bincov_to_windows(genome: str, bincov_paths: Sequence[str], chunk_map_path: Optional[str], window: int, out_path: str) -> Tuple[int, int, int, int]:
+def add_interval_hit(arr: List[int], chrom_len: int, start: int, end: int, window: int, step: int) -> None:
+    if end <= start or not arr:
+        return
+    if start < 0:
+        start = 0
+    if end > chrom_len:
+        end = chrom_len
+    if end <= start:
+        return
+    i_min = 0 if start < window else (start - window) // step + 1
+    i_max = (end - 1) // step
+    if i_max >= len(arr):
+        i_max = len(arr) - 1
+    for idx in range(i_min, i_max + 1):
+        w_start = idx * step
+        w_end = w_start + window
+        if w_end > chrom_len:
+            w_end = chrom_len
+        if min(end, w_end) > max(start, w_start):
+            arr[idx] += 1
+
+def run_sam_to_windows(genome: str, sam_path: str, window: int, step: int, out_path: str) -> Tuple[int, int, int, int]:
     order, sizes = load_genome_sizes(genome)
-    weighted_by_chr: Dict[str, List[float]] = {}
+    nwin_by_chr: Dict[str, int] = {}
+    bases_by_chr: Dict[str, List[int]] = {}
+    hits_by_chr: Dict[str, List[int]] = {}
     total_windows = 0
     for chrom in order:
-        nwin = (sizes[chrom] + window - 1) // window if sizes[chrom] > 0 else 0
-        weighted_by_chr[chrom] = [0.0] * nwin
+        length = sizes[chrom]
+        if length <= 0:
+            nwin = 0
+        else:
+            nwin = len(range(0, length, step))
+        nwin_by_chr[chrom] = nwin
+        bases_by_chr[chrom] = [0] * nwin
+        hits_by_chr[chrom] = [0] * nwin
         total_windows += nwin
 
-    chunk_map = load_chunk_map(chunk_map_path)
-    total_rows = 0
-    used_rows = 0
-
-    for path in bincov_paths:
-        rows = read_bbmap_bincov_rows(path)
-        min_start = min(row[1] for row in rows)
-        start_offset = 1 if min_start == 1 else 0
-        for ref, raw_start, raw_end, depth in rows:
-            total_rows += 1
-            original, chunk_offset = chunk_map.get(ref, (ref, 0))
-            if original not in sizes:
+    total_records = 0
+    used_alignments = 0
+    skipped_records = 0
+    with open_text(sam_path) as fh:
+        for raw in fh:
+            if not raw or raw.startswith("@"):
                 continue
-            start0 = raw_start - start_offset + chunk_offset
-            end0 = raw_end + chunk_offset if start_offset else raw_end + chunk_offset
-            add_depth_interval(weighted_by_chr[original], sizes[original], start0, end0, depth, window)
-            used_rows += 1
+            parts = raw.rstrip("\n").split("\t")
+            if len(parts) < 11:
+                skipped_records += 1
+                continue
+            total_records += 1
+            try:
+                flag = int(parts[1])
+                chrom = parts[2]
+                pos = int(parts[3])
+                mapq = int(parts[4])
+                cigar = parts[5]
+            except Exception:
+                skipped_records += 1
+                continue
+            # Skip unmapped, secondary, and supplementary alignments to avoid double-counting.
+            if (flag & 4) or (flag & 256) or (flag & 2048):
+                skipped_records += 1
+                continue
+            if chrom == "*" or cigar == "*" or chrom not in sizes or pos <= 0:
+                skipped_records += 1
+                continue
+            pos0 = pos - 1
+            blocks, span_start, span_end = parse_cigar_blocks(pos0, cigar)
+            if span_end <= span_start or not blocks:
+                skipped_records += 1
+                continue
+            chrom_len = sizes[chrom]
+            for b_start, b_end in blocks:
+                add_interval_bases(bases_by_chr[chrom], chrom_len, b_start, b_end, window, step)
+            add_interval_hit(hits_by_chr[chrom], chrom_len, span_start, span_end, window, step)
+            used_alignments += 1
 
     with open(out_path, "w") as out:
-        out.write("chr\tstart\tend\tdepth\n")
+        out.write("chr\tstart\tend\tdepth\tread_hits\n")
         for chrom in order:
             chrom_len = sizes[chrom]
-            for idx, weighted_bases in enumerate(weighted_by_chr[chrom]):
-                start = idx * window
-                end = min(start + window, chrom_len)
+            nwin = nwin_by_chr[chrom]
+            bases = bases_by_chr[chrom]
+            hits = hits_by_chr[chrom]
+            for idx in range(nwin):
+                start = idx * step
+                end = start + window
+                if end > chrom_len:
+                    end = chrom_len
                 denom = end - start
-                depth = weighted_bases / denom if denom > 0 else 0.0
-                out.write(f"{chrom}\t{start}\t{end}\t{depth:.10g}\n")
-
-    return len(bincov_paths), total_rows, used_rows, total_windows
+                depth = (bases[idx] / denom) if denom > 0 else 0.0
+                out.write(f"{chrom}\t{start}\t{end}\t{depth:.10g}\t{hits[idx]}\n")
+    return total_records, used_alignments, skipped_records, total_windows
 
 def main() -> int:
     ap = argparse.ArgumentParser(add_help=False)
@@ -535,12 +535,12 @@ def main() -> int:
     p_kmer.add_argument("--threads", type=int, required=True)
     p_kmer.add_argument("--out", required=True)
 
-    p_bincov = sub.add_parser("bincov-windows", add_help=False)
-    p_bincov.add_argument("--genome", required=True)
-    p_bincov.add_argument("--bincov", nargs="+", required=True)
-    p_bincov.add_argument("--chunk-map", default="")
-    p_bincov.add_argument("--window", type=int, required=True)
-    p_bincov.add_argument("--out", required=True)
+    p_sam = sub.add_parser("sam-windows", add_help=False)
+    p_sam.add_argument("--genome", required=True)
+    p_sam.add_argument("--sam", required=True)
+    p_sam.add_argument("--window", type=int, required=True)
+    p_sam.add_argument("--step", type=int, required=True)
+    p_sam.add_argument("--out", required=True)
 
     args = ap.parse_args()
     try:
@@ -564,13 +564,13 @@ def main() -> int:
             log("Info", f"  Skipped N/non-ACGT  : {total_skipped_n}")
             log("Info", f"  Marker hits         : {total_hits}")
             return 0
-        if args.cmd == "bincov-windows":
-            files, rows, used, windows = run_bincov_to_windows(args.genome, args.bincov, args.chunk_map, args.window, args.out)
+        if args.cmd == "sam-windows":
+            total, used, skipped, windows = run_sam_to_windows(args.genome, args.sam, args.window, args.step, args.out)
             log("Info", "SEXmer read-window table complete.")
-            log("Info", f"  BBMap binned coverage files : {files}")
-            log("Info", f"  BBMap coverage rows read    : {rows}")
-            log("Info", f"  Coverage rows used          : {used}")
-            log("Info", f"  Windows written             : {windows}")
+            log("Info", f"  SAM records read     : {total}")
+            log("Info", f"  Alignments used      : {used}")
+            log("Info", f"  Records skipped      : {skipped}")
+            log("Info", f"  Windows written      : {windows}")
             return 0
         raise ValueError("Unknown command")
     except Exception as exc:
@@ -928,88 +928,11 @@ if [[ ${#READ_FILES[@]} -gt 0 ]]; then
     info "Read files : ${READ_FILES[*]}"
     info "Seq type   : ${SEQ_TYPE}"
     info "Read output: ${READS_OUT}"
-    info "Read coverage mode: BBMap binned coverage; covbinsize=${WINDOW}; --step is ignored for reads."
 
+    SAM_TMP="${MAP_TMPDIR}/bbmap_stream.sam"
     BBMAP_INDEX_DIR="${MAP_TMPDIR}/bbmap_ref"
     mkdir -p "$BBMAP_INDEX_DIR"
-
-    BBMAP_REF_GENOME="${MAP_TMPDIR}/bbmap_reference.fa"
-    BBMAP_REF_CHUNK_MAP="${MAP_TMPDIR}/bbmap_reference.chunk_map.tsv"
-    BBMAP_CHUNK_SIZE=500000000
-    BBMAP_CHUNK_OVERLAP=10000
-
-    info "Preparing BBMap-compatible reference for read validation..."
-    python3 - "$GENOME" "$BBMAP_REF_GENOME" "$BBMAP_REF_CHUNK_MAP" "$BBMAP_CHUNK_SIZE" "$BBMAP_CHUNK_OVERLAP" <<'PY'
-import gzip
-import sys
-
-genome, out_fa, map_tsv, chunk_size_s, overlap_s = sys.argv[1:6]
-chunk_size = int(chunk_size_s)
-overlap = int(overlap_s)
-if overlap < 0 or overlap >= chunk_size:
-    raise SystemExit("Invalid BBMap chunk overlap")
-
-def open_text(path):
-    return gzip.open(path, "rt") if path.endswith(".gz") else open(path, "rt")
-
-def wrap_write(out, seq, width=80):
-    for i in range(0, len(seq), width):
-        out.write(seq[i:i+width] + "\n")
-
-def emit_record(out, mp, name, seq):
-    length = len(seq)
-    if length == 0:
-        return 0, 0
-    if length <= chunk_size:
-        out.write(f">{name}\n")
-        wrap_write(out, seq)
-        return 1, 0
-    chunks = 0
-    step = chunk_size - overlap
-    start = 0
-    while start < length:
-        end = min(start + chunk_size, length)
-        chunk_name = f"{name}__SEXMERCHUNK__{start}__{end}"
-        out.write(f">{chunk_name}\n")
-        wrap_write(out, seq[start:end])
-        mp.write(f"{chunk_name}\t{name}\t{start}\t{end}\n")
-        chunks += 1
-        if end == length:
-            break
-        start += step
-    return chunks, 1
-
-records = 0
-chunks = 0
-split_records = 0
-name = None
-parts = []
-with open_text(genome) as fh, open(out_fa, "w") as out, open(map_tsv, "w") as mp:
-    mp.write("chunk\toriginal\tstart\tend\n")
-    for raw in fh:
-        line = raw.strip()
-        if not line:
-            continue
-        if line.startswith(">"):
-            if name is not None:
-                c, sp = emit_record(out, mp, name, "".join(parts))
-                records += 1
-                chunks += c
-                split_records += sp
-            name = line[1:].split()[0]
-            parts = []
-        else:
-            parts.append(line)
-    if name is not None:
-        c, sp = emit_record(out, mp, name, "".join(parts))
-        records += 1
-        chunks += c
-        split_records += sp
-
-if records == 0 or chunks == 0:
-    raise SystemExit(f"No sequence found while preparing BBMap reference: {genome}")
-print(f"[Info] BBMap reference records: original={records}, bbmap_records={chunks}, split_large_records={split_records}", file=sys.stderr)
-PY
+    : > "$SAM_TMP"
 
     MAPPER="bbmap.sh"
     if [[ "$SEQ_TYPE" == "ONT" || "$SEQ_TYPE" == "PacBio" ]]; then
@@ -1021,27 +944,23 @@ PY
         fi
     fi
 
-    BINCOV_FILES=()
-    run_bbmap_to_bincov() {
-        local cov_out="$1"
-        local r1="$2"
-        local r2="${3:-}"
+    run_bbmap_to_sam() {
+        local r1="$1"
+        local r2="${2:-}"
         if [[ -n "$r2" ]]; then
-            info "Running BBMap paired-end coverage validation: $(basename "$r1") , $(basename "$r2")"
-            "$MAPPER" ref="$BBMAP_REF_GENOME" path="$BBMAP_INDEX_DIR" in="$r1" in2="$r2" out=/dev/null bincov="$cov_out" covbinsize="$WINDOW" nzo=f overwrite=t threads="$THREADS" 2>&1 \
+            info "Running BBMap paired-end validation: $(basename "$r1") , $(basename "$r2")"
+            "$MAPPER" ref="$GENOME" path="$BBMAP_INDEX_DIR" in="$r1" in2="$r2" out="$SAM_TMP" overwrite=t threads="$THREADS" 2>&1 \
                 | while IFS= read -r line; do info "  [bbmap] $line"; done
         else
-            info "Running BBMap single/long-read coverage validation: $(basename "$r1")"
-            "$MAPPER" ref="$BBMAP_REF_GENOME" path="$BBMAP_INDEX_DIR" in="$r1" out=/dev/null bincov="$cov_out" covbinsize="$WINDOW" nzo=f overwrite=t threads="$THREADS" 2>&1 \
+            info "Running BBMap single/long-read validation: $(basename "$r1")"
+            "$MAPPER" ref="$GENOME" path="$BBMAP_INDEX_DIR" in="$r1" out="$SAM_TMP" overwrite=t threads="$THREADS" 2>&1 \
                 | while IFS= read -r line; do info "  [bbmap] $line"; done
         fi
-        [[ -s "$cov_out" ]] || { error "BBMap did not produce binned coverage output: $cov_out"; exit 1; }
-        BINCOV_FILES+=("$cov_out")
     }
 
     if [[ ${#READ_FILES[@]} -eq 2 ]] && filename_pair_score "${READ_FILES[0]}" "${READ_FILES[1]}"; then
         info "Read mode detected: paired-end based on filename pattern."
-        run_bbmap_to_bincov "${MAP_TMPDIR}/bbmap_paired.bincov.tsv" "${READ_FILES[0]}" "${READ_FILES[1]}"
+        run_bbmap_to_sam "${READ_FILES[0]}" "${READ_FILES[1]}"
     else
         if [[ ${#READ_FILES[@]} -eq 2 ]]; then
             info "Read mode detected: two single/long-read files; filename pattern is not paired-end."
@@ -1050,18 +969,27 @@ PY
         fi
         FIRST=1
         for rf in "${READ_FILES[@]}"; do
-            info "Running BBMap coverage for read file ${FIRST}/${#READ_FILES[@]}: $(basename "$rf")"
-            run_bbmap_to_bincov "${MAP_TMPDIR}/bbmap_${FIRST}.bincov.tsv" "$rf"
+            TMP_ONE="${MAP_TMPDIR}/bbmap_one_${FIRST}.sam"
+            info "Running BBMap for read file ${FIRST}/${#READ_FILES[@]}: $(basename "$rf")"
+            "$MAPPER" ref="$GENOME" path="$BBMAP_INDEX_DIR" in="$rf" out="$TMP_ONE" overwrite=t threads="$THREADS" 2>&1 \
+                | while IFS= read -r line; do info "  [bbmap] $line"; done
+            if [[ "$FIRST" -eq 1 ]]; then
+                cat "$TMP_ONE" > "$SAM_TMP"
+            else
+                awk 'BEGIN{OFS="\t"} /^@/ {next} {print}' "$TMP_ONE" >> "$SAM_TMP"
+            fi
             FIRST=$(( FIRST + 1 ))
         done
     fi
 
-    info "Converting BBMap binned coverage to SEXmer read-window table..."
-    python3 "$SCANNER" bincov-windows \
+    [[ -s "$SAM_TMP" ]] || { error "BBMap did not produce SAM output for read validation."; exit 1; }
+
+    info "Converting BBMap SAM output to sliding-window read depth table..."
+    python3 "$SCANNER" sam-windows \
         --genome "$GENOME" \
-        --bincov "${BINCOV_FILES[@]}" \
-        --chunk-map "$BBMAP_REF_CHUNK_MAP" \
+        --sam "$SAM_TMP" \
         --window "$WINDOW" \
+        --step "$STEP" \
         --out "$READS_OUT"
 
     [[ -f "$READS_OUT" ]] || { error "Read-window parser did not produce output file: $READS_OUT"; exit 1; }
