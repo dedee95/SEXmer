@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SEXmer-map.sh - Map SEXmer marker k-mers and optional extracted reads to reference genome windows.
+# SEXmer-map.v2.sh - Map SEXmer marker k-mers and optional extracted reads to reference genome windows.
 # Author: Dede Kurniawan
 
 set -euo pipefail
@@ -9,8 +9,6 @@ export LC_ALL=C
 KMER_SIZE=21
 WINDOW=10000
 STEP=2500
-COUNT_MODE="hit"
-MEM="16G"
 THREADS=8
 PREFIX=""
 TMPDIR_BASE="$(pwd)"
@@ -38,14 +36,12 @@ Mandatory:
   --prefix             Output filename prefix
 
 Optionals:
-  -k, --kmer-size      K-mer size (1-63)                              [default: ${KMER_SIZE}]
+  -k, --kmer-size      K-mer size (1-63)                               [default: ${KMER_SIZE}]
   -w, --window         Window size in bp                               [default: ${WINDOW}]
   -s, --step           Sliding step size in bp                         [default: ${STEP}]
-  --count-mode         Count mode; currently only 'hit'                [default: ${COUNT_MODE}]
   -r, --reads          Comma-separated FASTQ file(s) for BBMap validation
                        Examples: -r reads.fq.gz OR -r reads_1.fq.gz,reads_2.fq.gz
   --seq-type           Read technology: auto, short, ONT, PacBio       [default: ${SEQ_TYPE}]
-  --mem                RAM budget for logging/compatibility            [default: ${MEM}]
   -t, --threads        CPU threads                                     [default: ${THREADS}]
   --tmpdir             Parent directory for temporary work folder      [default: current dir]
   -h, --help           Show this help and exit
@@ -63,10 +59,8 @@ while [[ $# -gt 0 ]]; do
         -k|--kmer-size)    KMER_SIZE="$2";   shift 2 ;;
         -w|--window)       WINDOW="$2";      shift 2 ;;
         -s|--step)         STEP="$2";        shift 2 ;;
-        --count-mode)      COUNT_MODE="$2";  shift 2 ;;
         -r|--reads)        READS_INPUT="$2"; shift 2 ;;
         --seq-type)        SEQ_TYPE="$2";    shift 2 ;;
-        --mem)             MEM="$2";         shift 2 ;;
         -t|--threads)      THREADS="$2";     shift 2 ;;
         --tmpdir)          TMPDIR_BASE="$2"; shift 2 ;;
         -h|--help)         usage ;;
@@ -95,8 +89,6 @@ KMER_SIZE="$(normalize_int "$KMER_SIZE")"
 WINDOW="$(normalize_int "$WINDOW")"
 STEP="$(normalize_int "$STEP")"
 THREADS="$(normalize_int "$THREADS")"
-MEM="${MEM//_/}"
-
 [[ "$KMER_SIZE" =~ ^[1-9][0-9]*$ ]] && [[ "$KMER_SIZE" -le 63 ]] || {
     error "--kmer-size must be an integer between 1 and 63."; exit 1; }
 
@@ -108,12 +100,6 @@ MEM="${MEM//_/}"
 
 [[ "$THREADS" =~ ^[1-9][0-9]*$ ]] || {
     error "--threads must be a positive integer."; exit 1; }
-
-[[ "$MEM" =~ ^[0-9]+[GgMm]$ ]] || {
-    error "--mem must be a number followed by G or M (e.g. 16G, 512M)."; exit 1; }
-
-[[ "$COUNT_MODE" == "hit" ]] || {
-    error "--count-mode currently supports only 'hit'."; exit 1; }
 
 case "$SEQ_TYPE" in
     auto|short|ONT|ont|PacBio|pacbio|PACBIO) ;;
@@ -176,10 +162,8 @@ _G_K: Optional[int] = None
 _G_WINDOW: Optional[int] = None
 _G_STEP: Optional[int] = None
 
-
 def log(kind: str, msg: str) -> None:
     print(f"[{kind}] {msg}", file=sys.stderr)
-
 
 def open_text(path: str):
     if path == "-":
@@ -188,10 +172,8 @@ def open_text(path: str):
         return gzip.open(path, "rt")
     return open(path, "rt")
 
-
 def revcomp(seq: str) -> str:
     return seq.translate(RC_TRANS)[::-1]
-
 
 def encode_kmer(seq: str) -> Optional[int]:
     code = 0
@@ -201,7 +183,6 @@ def encode_kmer(seq: str) -> Optional[int]:
             return None
         code = (code << 2) | val
     return code
-
 
 def parse_fasta(path: str) -> Iterator[Tuple[str, str]]:
     name = None
@@ -221,7 +202,6 @@ def parse_fasta(path: str) -> Iterator[Tuple[str, str]]:
         if name is not None:
             yield name, "".join(chunks)
 
-
 def load_genome_sizes(path: str) -> Tuple[List[str], Dict[str, int]]:
     order: List[str] = []
     sizes: Dict[str, int] = {}
@@ -233,7 +213,6 @@ def load_genome_sizes(path: str) -> Tuple[List[str], Dict[str, int]]:
     if not order:
         raise ValueError(f"No sequence found in genome FASTA: {path}")
     return order, sizes
-
 
 def load_markers(path: str, k: int) -> Tuple[set, int, int]:
     raw_count = 0
@@ -257,12 +236,10 @@ def load_markers(path: str, k: int) -> Tuple[set, int, int]:
         raise ValueError(f"No marker sequence found in FASTA: {path}")
     return indexed, raw_count, len(indexed)
 
-
 def window_starts(seq_len: int, k: int, step: int) -> List[int]:
     if seq_len < k:
         return []
     return list(range(0, seq_len - k + 1, step))
-
 
 def count_valid_sites_for_window(q_start: int, q_end: int, intervals: Sequence[Tuple[int, int]], start_hint: int) -> Tuple[int, int]:
     if q_end < q_start:
@@ -281,7 +258,6 @@ def count_valid_sites_for_window(q_start: int, q_end: int, intervals: Sequence[T
             total += right - left + 1
         i += 1
     return total, new_hint
-
 
 def scan_chrom_int2bit(chrom: str, seq: str, markers: set, k: int, window: int, step: int) -> Tuple[str, int, int, int, int, str]:
     seq_len = len(seq)
@@ -361,7 +337,6 @@ def scan_chrom_int2bit(chrom: str, seq: str, markers: set, k: int, window: int, 
         rows.append(f"{chrom}\t{start}\t{end}\t{hits}\t{hits_per_10kb:.10g}\n")
     return chrom, nwin, valid_kmers, skipped_non_acgt, total_hits, "".join(rows)
 
-
 def init_worker(markers: set, k: int, window: int, step: int) -> None:
     global _G_MARKERS, _G_K, _G_WINDOW, _G_STEP
     _G_MARKERS = markers
@@ -369,12 +344,10 @@ def init_worker(markers: set, k: int, window: int, step: int) -> None:
     _G_WINDOW = window
     _G_STEP = step
 
-
 def scan_chrom_worker(item: Tuple[str, str]) -> Tuple[str, int, int, int, int, str]:
     chrom, seq = item
     assert _G_MARKERS is not None and _G_K is not None and _G_WINDOW is not None and _G_STEP is not None
     return scan_chrom_int2bit(chrom, seq, _G_MARKERS, _G_K, _G_WINDOW, _G_STEP)
-
 
 def run_kmer_scan(genome: str, markers: set, k: int, window: int, step: int, threads: int, out_path: str) -> Tuple[int, int, int, int, int, int]:
     chrom_count = 0
@@ -413,7 +386,6 @@ def run_kmer_scan(genome: str, markers: set, k: int, window: int, step: int, thr
                 total_bases += len(seq)
     return chrom_count, total_bases, total_windows, total_valid_kmers, total_skipped_n, total_hits
 
-
 def parse_cigar_blocks(pos0: int, cigar: str) -> Tuple[List[Tuple[int, int]], int, int]:
     """Return query-aligned reference blocks [start,end), reference span start/end."""
     ref = pos0
@@ -432,7 +404,6 @@ def parse_cigar_blocks(pos0: int, cigar: str) -> Tuple[List[Tuple[int, int]], in
         else:
             continue
     return blocks, span_start, ref
-
 
 def add_interval_bases(arr: List[int], chrom_len: int, start: int, end: int, window: int, step: int) -> None:
     if end <= start or not arr:
@@ -457,7 +428,6 @@ def add_interval_bases(arr: List[int], chrom_len: int, start: int, end: int, win
         if ov > 0:
             arr[idx] += ov
 
-
 def add_interval_hit(arr: List[int], chrom_len: int, start: int, end: int, window: int, step: int) -> None:
     if end <= start or not arr:
         return
@@ -478,7 +448,6 @@ def add_interval_hit(arr: List[int], chrom_len: int, start: int, end: int, windo
             w_end = chrom_len
         if min(end, w_end) > max(start, w_start):
             arr[idx] += 1
-
 
 def run_sam_to_windows(genome: str, sam_path: str, window: int, step: int, out_path: str) -> Tuple[int, int, int, int]:
     order, sizes = load_genome_sizes(genome)
@@ -553,7 +522,6 @@ def run_sam_to_windows(genome: str, sam_path: str, window: int, step: int, out_p
                 out.write(f"{chrom}\t{start}\t{end}\t{depth:.10g}\t{hits[idx]}\n")
     return total_records, used_alignments, skipped_records, total_windows
 
-
 def main() -> int:
     ap = argparse.ArgumentParser(add_help=False)
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -609,7 +577,6 @@ def main() -> int:
         log("Error", str(exc))
         return 1
 
-
 if __name__ == "__main__":
     sys.exit(main())
 PY
@@ -619,8 +586,8 @@ KMER_OUT="${PREFIX}.kmer.windows.tsv"
 READS_OUT="${PREFIX}.reads.windows.tsv"
 
 info "SEXmer-map starting"
-info "Parameters : kmer-size=${KMER_SIZE}, window=${WINDOW}, step=${STEP}, count-mode=${COUNT_MODE}"
-info "Settings   : mem=${MEM}, threads=${THREADS}"
+info "Parameters : kmer-size=${KMER_SIZE}, window=${WINDOW}, step=${STEP}"
+info "Settings   : threads=${THREADS}"
 info "Genome     : ${GENOME}"
 info "Markers    : ${MARKERS}"
 info "Kmer output: ${KMER_OUT}"
@@ -668,6 +635,8 @@ if [[ ${#READ_FILES[@]} -gt 0 ]]; then
     info "Read output: ${READS_OUT}"
 
     SAM_TMP="${MAP_TMPDIR}/bbmap_stream.sam"
+    BBMAP_INDEX_DIR="${MAP_TMPDIR}/bbmap_ref"
+    mkdir -p "$BBMAP_INDEX_DIR"
     : > "$SAM_TMP"
 
     MAPPER="bbmap.sh"
@@ -685,11 +654,11 @@ if [[ ${#READ_FILES[@]} -gt 0 ]]; then
         local r2="${2:-}"
         if [[ -n "$r2" ]]; then
             info "Running BBMap paired-end validation: $(basename "$r1") , $(basename "$r2")"
-            "$MAPPER" ref="$GENOME" in="$r1" in2="$r2" out="$SAM_TMP" overwrite=t threads="$THREADS" 2>&1 \
+            "$MAPPER" ref="$GENOME" path="$BBMAP_INDEX_DIR" in="$r1" in2="$r2" out="$SAM_TMP" overwrite=t threads="$THREADS" 2>&1 \
                 | while IFS= read -r line; do info "  [bbmap] $line"; done
         else
             info "Running BBMap single/long-read validation: $(basename "$r1")"
-            "$MAPPER" ref="$GENOME" in="$r1" out="$SAM_TMP" overwrite=t threads="$THREADS" 2>&1 \
+            "$MAPPER" ref="$GENOME" path="$BBMAP_INDEX_DIR" in="$r1" out="$SAM_TMP" overwrite=t threads="$THREADS" 2>&1 \
                 | while IFS= read -r line; do info "  [bbmap] $line"; done
         fi
     }
@@ -707,7 +676,7 @@ if [[ ${#READ_FILES[@]} -gt 0 ]]; then
         for rf in "${READ_FILES[@]}"; do
             TMP_ONE="${MAP_TMPDIR}/bbmap_one_${FIRST}.sam"
             info "Running BBMap for read file ${FIRST}/${#READ_FILES[@]}: $(basename "$rf")"
-            "$MAPPER" ref="$GENOME" in="$rf" out="$TMP_ONE" overwrite=t threads="$THREADS" 2>&1 \
+            "$MAPPER" ref="$GENOME" path="$BBMAP_INDEX_DIR" in="$rf" out="$TMP_ONE" overwrite=t threads="$THREADS" 2>&1 \
                 | while IFS= read -r line; do info "  [bbmap] $line"; done
             if [[ "$FIRST" -eq 1 ]]; then
                 cat "$TMP_ONE" > "$SAM_TMP"
