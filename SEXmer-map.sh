@@ -15,7 +15,7 @@ TMPDIR_BASE="$(pwd)"
 GENOME=""
 MARKERS=""
 READS_INPUT=""
-SEQ_TYPE="auto"
+SEQ_TYPE="short"
 
 # log helpers
 info()    { echo "[Info] $*"    >&2; }
@@ -26,7 +26,7 @@ error()   { echo "[Error] $*"  >&2; }
 usage() {
     cat >&2 <<EOF
 
-SEXmer-map.sh - Map SEXmer marker k-mers and optional extracted reads to reference genome windows.
+SEXmer-map.sh - Map SEXmer marker k-mers and optional extracted reads to reference genome.
 
 Usage: SEXmer-map.sh <genome.fa> <markers.fa> --prefix <prefix> [OPTIONS]
 
@@ -41,7 +41,7 @@ Optionals:
   -s, --step           Sliding step size in bp                         [default: ${STEP}]
   -r, --reads          Comma-separated FASTQ file(s) for BBMap validation
                        Examples: -r reads.fq.gz OR -r reads_1.fq.gz,reads_2.fq.gz
-  --seq-type           Read technology: auto, short, ONT, PacBio       [default: ${SEQ_TYPE}]
+  --seq-type           Read type: short or long                        [default: ${SEQ_TYPE}]
   -t, --threads        CPU threads                                     [default: ${THREADS}]
   --tmpdir             Parent directory for temporary work folder      [default: current dir]
   -h, --help           Show this help and exit
@@ -102,12 +102,8 @@ THREADS="$(normalize_int "$THREADS")"
     error "--threads must be a positive integer."; exit 1; }
 
 case "$SEQ_TYPE" in
-    auto|short|ONT|ont|PacBio|pacbio|PACBIO) ;;
-    *) error "--seq-type must be one of: auto, short, ONT, PacBio."; exit 1 ;;
-esac
-case "$SEQ_TYPE" in
-    ont) SEQ_TYPE="ONT" ;;
-    pacbio|PACBIO) SEQ_TYPE="PacBio" ;;
+    short|long) ;;
+    *) error "--seq-type must be one of: short, long."; exit 1 ;;
 esac
 
 [[ -d "$TMPDIR_BASE" ]] || { error "Temporary parent directory does not exist: ${TMPDIR_BASE}"; exit 1; }
@@ -129,6 +125,9 @@ if [[ -n "$READS_INPUT" ]]; then
         [[ -r "$f" ]] || { error "Cannot read FASTQ file from --reads: $f"; exit 1; }
     done
     command -v bbmap.sh &>/dev/null || { error "bbmap.sh not found on PATH. BBTools is required when -r/--reads is used."; exit 1; }
+    if [[ "$SEQ_TYPE" == "long" ]]; then
+        command -v reformat.sh &>/dev/null || { error "reformat.sh not found on PATH. BBTools reformat.sh is required for --seq-type long."; exit 1; }
+    fi
 fi
 
 MAP_TMPDIR="${TMPDIR_BASE}/sexmer_map_tmp_$$"
@@ -405,8 +404,29 @@ def parse_cigar_blocks(pos0: int, cigar: str) -> Tuple[List[Tuple[int, int]], in
             continue
     return blocks, span_start, ref
 
-def add_interval_bases(arr: List[int], chrom_len: int, start: int, end: int, window: int, step: int) -> None:
-    if end <= start or not arr:
+def load_chunk_map(path: Optional[str]) -> Dict[str, Tuple[str, int]]:
+    chunk_map: Dict[str, Tuple[str, int]] = {}
+    if not path:
+        return chunk_map
+    with open_text(path) as fh:
+        next(fh, None)
+        for raw in fh:
+            line = raw.rstrip("\n")
+            if not line:
+                continue
+            parts = line.split("\t")
+            if len(parts) < 4:
+                continue
+            chunk, original, start_s, _end_s = parts[:4]
+            try:
+                chunk_map[chunk] = (original, int(start_s))
+            except ValueError:
+                continue
+    return chunk_map
+
+
+def add_coverage_event(events: List[Tuple[int, int]], chrom_len: int, start: int, end: int) -> None:
+    if end <= start:
         return
     if start < 0:
         start = 0
@@ -414,57 +434,87 @@ def add_interval_bases(arr: List[int], chrom_len: int, start: int, end: int, win
         end = chrom_len
     if end <= start:
         return
+    events.append((start, 1))
+    events.append((end, -1))
 
-    i_min = 0 if start < window else (start - window) // step + 1
-    i_max = (end - 1) // step
-    if i_max >= len(arr):
-        i_max = len(arr) - 1
-    for idx in range(i_min, i_max + 1):
-        w_start = idx * step
-        w_end = w_start + window
-        if w_end > chrom_len:
-            w_end = chrom_len
-        ov = min(end, w_end) - max(start, w_start)
-        if ov > 0:
-            arr[idx] += ov
 
-def add_interval_hit(arr: List[int], chrom_len: int, start: int, end: int, window: int, step: int) -> None:
-    if end <= start or not arr:
-        return
-    if start < 0:
-        start = 0
-    if end > chrom_len:
-        end = chrom_len
-    if end <= start:
-        return
-    i_min = 0 if start < window else (start - window) // step + 1
-    i_max = (end - 1) // step
-    if i_max >= len(arr):
-        i_max = len(arr) - 1
-    for idx in range(i_min, i_max + 1):
-        w_start = idx * step
-        w_end = w_start + window
-        if w_end > chrom_len:
-            w_end = chrom_len
-        if min(end, w_end) > max(start, w_start):
-            arr[idx] += 1
+def build_coverage_prefix(events: List[Tuple[int, int]], chrom_len: int) -> Tuple[List[int], List[int], List[int]]:
+    if chrom_len <= 0:
+        return [0], [0], []
+    if not events:
+        return [0, chrom_len], [0, 0], [0]
 
-def run_sam_to_windows(genome: str, sam_path: str, window: int, step: int, out_path: str) -> Tuple[int, int, int, int]:
+    events.sort()
+    points: List[int] = [0]
+    prefix: List[int] = [0]
+    coverage: List[int] = []
+    cov = 0
+    prev = 0
+    i = 0
+    n = len(events)
+
+    while i < n:
+        pos = events[i][0]
+        if pos < 0:
+            pos = 0
+        elif pos > chrom_len:
+            pos = chrom_len
+
+        if pos > prev:
+            coverage.append(cov)
+            prefix.append(prefix[-1] + cov * (pos - prev))
+            points.append(pos)
+            prev = pos
+
+        delta = 0
+        while i < n:
+            raw_pos, raw_delta = events[i]
+            clipped_pos = raw_pos
+            if clipped_pos < 0:
+                clipped_pos = 0
+            elif clipped_pos > chrom_len:
+                clipped_pos = chrom_len
+            if clipped_pos != pos:
+                break
+            delta += raw_delta
+            i += 1
+        cov += delta
+
+        if prev >= chrom_len:
+            break
+
+    if chrom_len > prev:
+        coverage.append(cov)
+        prefix.append(prefix[-1] + cov * (chrom_len - prev))
+        points.append(chrom_len)
+
+    if len(points) == 1:
+        points.append(chrom_len)
+        prefix.append(0)
+        coverage.append(0)
+    return points, prefix, coverage
+
+
+def coverage_integral(x: int, points: List[int], prefix: List[int], coverage: List[int]) -> int:
+    from bisect import bisect_right
+    if x <= points[0]:
+        return prefix[0]
+    if x >= points[-1]:
+        return prefix[-1]
+    idx = bisect_right(points, x) - 1
+    if idx >= len(coverage):
+        return prefix[-1]
+    return prefix[idx] + coverage[idx] * (x - points[idx])
+
+
+def run_sam_to_windows(genome: str, sam_path: str, window: int, step: int, out_path: str, chunk_map_path: Optional[str] = None) -> Tuple[int, int, int, int]:
     order, sizes = load_genome_sizes(genome)
-    nwin_by_chr: Dict[str, int] = {}
-    bases_by_chr: Dict[str, List[int]] = {}
-    hits_by_chr: Dict[str, List[int]] = {}
+    chunk_map = load_chunk_map(chunk_map_path)
+    events_by_chr: Dict[str, List[Tuple[int, int]]] = {chrom: [] for chrom in order}
     total_windows = 0
     for chrom in order:
         length = sizes[chrom]
-        if length <= 0:
-            nwin = 0
-        else:
-            nwin = len(range(0, length, step))
-        nwin_by_chr[chrom] = nwin
-        bases_by_chr[chrom] = [0] * nwin
-        hits_by_chr[chrom] = [0] * nwin
-        total_windows += nwin
+        total_windows += len(range(0, length, step)) if length > 0 else 0
 
     total_records = 0
     used_alignments = 0
@@ -473,8 +523,8 @@ def run_sam_to_windows(genome: str, sam_path: str, window: int, step: int, out_p
         for raw in fh:
             if not raw or raw.startswith("@"):
                 continue
-            parts = raw.rstrip("\n").split("\t")
-            if len(parts) < 11:
+            parts = raw.rstrip("\n").split("\t", 11)
+            if len(parts) < 6:
                 skipped_records += 1
                 continue
             total_records += 1
@@ -482,44 +532,54 @@ def run_sam_to_windows(genome: str, sam_path: str, window: int, step: int, out_p
                 flag = int(parts[1])
                 chrom = parts[2]
                 pos = int(parts[3])
-                mapq = int(parts[4])
                 cigar = parts[5]
             except Exception:
                 skipped_records += 1
                 continue
-            # Skip unmapped, secondary, and supplementary alignments to avoid double-counting.
             if (flag & 4) or (flag & 256) or (flag & 2048):
                 skipped_records += 1
                 continue
-            if chrom == "*" or cigar == "*" or chrom not in sizes or pos <= 0:
+            if chrom == "*" or cigar == "*" or pos <= 0:
+                skipped_records += 1
+                continue
+            if chrom in chunk_map:
+                original, offset = chunk_map[chrom]
+                chrom = original
+                pos += offset
+            if chrom not in sizes:
                 skipped_records += 1
                 continue
             pos0 = pos - 1
-            blocks, span_start, span_end = parse_cigar_blocks(pos0, cigar)
-            if span_end <= span_start or not blocks:
+            blocks, _span_start, _span_end = parse_cigar_blocks(pos0, cigar)
+            if not blocks:
                 skipped_records += 1
                 continue
             chrom_len = sizes[chrom]
+            added = False
+            events = events_by_chr[chrom]
             for b_start, b_end in blocks:
-                add_interval_bases(bases_by_chr[chrom], chrom_len, b_start, b_end, window, step)
-            add_interval_hit(hits_by_chr[chrom], chrom_len, span_start, span_end, window, step)
+                before = len(events)
+                add_coverage_event(events, chrom_len, b_start, b_end)
+                if len(events) > before:
+                    added = True
+            if not added:
+                skipped_records += 1
+                continue
             used_alignments += 1
 
     with open(out_path, "w") as out:
-        out.write("chr\tstart\tend\tdepth\tread_hits\n")
+        out.write("chr\tstart\tend\tdepth\n")
         for chrom in order:
             chrom_len = sizes[chrom]
-            nwin = nwin_by_chr[chrom]
-            bases = bases_by_chr[chrom]
-            hits = hits_by_chr[chrom]
-            for idx in range(nwin):
-                start = idx * step
+            points, prefix, coverage = build_coverage_prefix(events_by_chr[chrom], chrom_len)
+            for start in range(0, chrom_len, step):
                 end = start + window
                 if end > chrom_len:
                     end = chrom_len
                 denom = end - start
-                depth = (bases[idx] / denom) if denom > 0 else 0.0
-                out.write(f"{chrom}\t{start}\t{end}\t{depth:.10g}\t{hits[idx]}\n")
+                bases = coverage_integral(end, points, prefix, coverage) - coverage_integral(start, points, prefix, coverage)
+                depth = (bases / denom) if denom > 0 else 0.0
+                out.write(f"{chrom}\t{start}\t{end}\t{depth:.10g}\n")
     return total_records, used_alignments, skipped_records, total_windows
 
 def main() -> int:
@@ -541,6 +601,7 @@ def main() -> int:
     p_sam.add_argument("--window", type=int, required=True)
     p_sam.add_argument("--step", type=int, required=True)
     p_sam.add_argument("--out", required=True)
+    p_sam.add_argument("--chunk-map", default=None)
 
     args = ap.parse_args()
     try:
@@ -565,7 +626,7 @@ def main() -> int:
             log("Info", f"  Marker hits         : {total_hits}")
             return 0
         if args.cmd == "sam-windows":
-            total, used, skipped, windows = run_sam_to_windows(args.genome, args.sam, args.window, args.step, args.out)
+            total, used, skipped, windows = run_sam_to_windows(args.genome, args.sam, args.window, args.step, args.out, args.chunk_map)
             log("Info", "SEXmer read-window table complete.")
             log("Info", f"  SAM records read     : {total}")
             log("Info", f"  Alignments used      : {used}")
@@ -1012,45 +1073,60 @@ if records == 0 or chunks == 0:
 print(f"[Info] BBMap reference records: original={records}, bbmap_records={chunks}, split_large_records={split_records}", file=sys.stderr)
 PY
 
+    LONG_READ_CHUNK=6000
     MAPPER="bbmap.sh"
-    if [[ "$SEQ_TYPE" == "ONT" || "$SEQ_TYPE" == "PacBio" ]]; then
+    if [[ "$SEQ_TYPE" == "long" ]]; then
         if command -v mapPacBio.sh &>/dev/null; then
             MAPPER="mapPacBio.sh"
-            info "Long-read seq-type selected; using mapPacBio.sh for BBTools long-read mapping."
+            info "Long-read mode selected; using mapPacBio.sh after read splitting."
         else
-            warn "mapPacBio.sh not found; falling back to bbmap.sh for long-read validation."
+            warn "mapPacBio.sh not found; falling back to bbmap.sh after read splitting."
         fi
     fi
+
+    split_long_reads() {
+        local input="$1"
+        local output="$2"
+        info "Splitting long reads into <=${LONG_READ_CHUNK} bp pieces: $(basename "$input")"
+        reformat.sh in="$input" out="$output" breaklength="$LONG_READ_CHUNK" overwrite=t ziplevel=2 2>&1             | while IFS= read -r line; do info "  [reformat] $line"; done
+        [[ -s "$output" ]] || { error "Long-read splitting did not produce output file: $output"; exit 1; }
+    }
 
     run_bbmap_to_sam() {
         local r1="$1"
         local r2="${2:-}"
+        local out_sam="$3"
         if [[ -n "$r2" ]]; then
             info "Running BBMap paired-end validation: $(basename "$r1") , $(basename "$r2")"
-            "$MAPPER" ref="$BBMAP_REF_GENOME" path="$BBMAP_INDEX_DIR" in="$r1" in2="$r2" out="$SAM_TMP" overwrite=t threads="$THREADS" 2>&1 \
-                | while IFS= read -r line; do info "  [bbmap] $line"; done
+            "$MAPPER" ref="$BBMAP_REF_GENOME" path="$BBMAP_INDEX_DIR" in="$r1" in2="$r2" out="$out_sam" overwrite=t threads="$THREADS" 2>&1                 | while IFS= read -r line; do info "  [bbmap] $line"; done
         else
-            info "Running BBMap single/long-read validation: $(basename "$r1")"
-            "$MAPPER" ref="$BBMAP_REF_GENOME" path="$BBMAP_INDEX_DIR" in="$r1" out="$SAM_TMP" overwrite=t threads="$THREADS" 2>&1 \
-                | while IFS= read -r line; do info "  [bbmap] $line"; done
+            info "Running BBMap single-read validation: $(basename "$r1")"
+            "$MAPPER" ref="$BBMAP_REF_GENOME" path="$BBMAP_INDEX_DIR" in="$r1" out="$out_sam" overwrite=t threads="$THREADS" 2>&1                 | while IFS= read -r line; do info "  [bbmap] $line"; done
         fi
     }
 
-    if [[ ${#READ_FILES[@]} -eq 2 ]] && filename_pair_score "${READ_FILES[0]}" "${READ_FILES[1]}"; then
+    if [[ "$SEQ_TYPE" == "short" && ${#READ_FILES[@]} -eq 2 ]] && filename_pair_score "${READ_FILES[0]}" "${READ_FILES[1]}"; then
         info "Read mode detected: paired-end based on filename pattern."
-        run_bbmap_to_sam "${READ_FILES[0]}" "${READ_FILES[1]}"
+        run_bbmap_to_sam "${READ_FILES[0]}" "${READ_FILES[1]}" "$SAM_TMP"
     else
-        if [[ ${#READ_FILES[@]} -eq 2 ]]; then
-            info "Read mode detected: two single/long-read files; filename pattern is not paired-end."
+        if [[ "$SEQ_TYPE" == "long" ]]; then
+            info "Read mode detected: long-read file set (${#READ_FILES[@]} file(s)); mapping each split file independently."
+        elif [[ ${#READ_FILES[@]} -eq 2 ]]; then
+            info "Read mode detected: two single-read files; filename pattern is not paired-end."
         else
-            info "Read mode detected: single/long-read file set (${#READ_FILES[@]} file(s))."
+            info "Read mode detected: single-read file set (${#READ_FILES[@]} file(s))."
         fi
         FIRST=1
         for rf in "${READ_FILES[@]}"; do
+            MAP_INPUT="$rf"
+            if [[ "$SEQ_TYPE" == "long" ]]; then
+                SPLIT_FASTQ="${MAP_TMPDIR}/long_reads_${FIRST}.split.fq.gz"
+                split_long_reads "$rf" "$SPLIT_FASTQ"
+                MAP_INPUT="$SPLIT_FASTQ"
+            fi
             TMP_ONE="${MAP_TMPDIR}/bbmap_one_${FIRST}.sam"
-            info "Running BBMap for read file ${FIRST}/${#READ_FILES[@]}: $(basename "$rf")"
-            "$MAPPER" ref="$BBMAP_REF_GENOME" path="$BBMAP_INDEX_DIR" in="$rf" out="$TMP_ONE" overwrite=t threads="$THREADS" 2>&1 \
-                | while IFS= read -r line; do info "  [bbmap] $line"; done
+            info "Running BBMap for read file ${FIRST}/${#READ_FILES[@]}: $(basename "$MAP_INPUT")"
+            run_bbmap_to_sam "$MAP_INPUT" "" "$TMP_ONE"
             if [[ "$FIRST" -eq 1 ]]; then
                 cat "$TMP_ONE" > "$SAM_TMP"
             else
@@ -1063,45 +1139,12 @@ PY
     [[ -s "$SAM_TMP" ]] || { error "BBMap did not produce SAM output for read validation."; exit 1; }
 
     SAM_FOR_WINDOWS="$SAM_TMP"
-    if [[ -s "$BBMAP_REF_CHUNK_MAP" ]] && [[ $(wc -l < "$BBMAP_REF_CHUNK_MAP") -gt 1 ]]; then
-        SAM_ORIGINAL_COORDS="${MAP_TMPDIR}/bbmap_stream.original_coords.sam"
-        info "Converting BBMap chunk coordinates back to original genome coordinates..."
-        python3 - "$SAM_TMP" "$BBMAP_REF_CHUNK_MAP" "$SAM_ORIGINAL_COORDS" <<'PY'
-import sys
-
-sam_in, map_tsv, sam_out = sys.argv[1:4]
-chunk_map = {}
-with open(map_tsv) as fh:
-    header = next(fh, None)
-    for raw in fh:
-        chunk, original, start, end = raw.rstrip("\n").split("\t")
-        chunk_map[chunk] = (original, int(start))
-
-converted = 0
-with open(sam_in) as inp, open(sam_out, "w") as out:
-    for raw in inp:
-        if raw.startswith("@"):
-            # Headers are ignored by the downstream parser; keep them untouched.
-            out.write(raw)
-            continue
-        parts = raw.rstrip("\n").split("\t")
-        if len(parts) >= 4 and parts[2] in chunk_map and parts[3].isdigit() and int(parts[3]) > 0:
-            original, offset = chunk_map[parts[2]]
-            parts[2] = original
-            parts[3] = str(int(parts[3]) + offset)
-            converted += 1
-            out.write("\t".join(parts) + "\n")
-        else:
-            out.write(raw)
-print(f"[Info] SAM alignments converted from BBMap chunks: {converted}", file=sys.stderr)
-PY
-        SAM_FOR_WINDOWS="$SAM_ORIGINAL_COORDS"
-    fi
 
     info "Converting BBMap SAM output to sliding-window read depth table..."
     python3 "$SCANNER" sam-windows \
         --genome "$GENOME" \
         --sam "$SAM_FOR_WINDOWS" \
+        --chunk-map "$BBMAP_REF_CHUNK_MAP" \
         --window "$WINDOW" \
         --step "$STEP" \
         --out "$READS_OUT"
