@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SEXmer-scan.sh - K-mer sex-specificity classifier from KMC or Jellyfish dump files.
+# SEXmer-scan.sh - K-mer sex-specificity classifier from KMC dump files.
 # Author: Dede Kurniawan 
 
 set -euo pipefail
