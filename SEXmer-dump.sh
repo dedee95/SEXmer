@@ -5,10 +5,8 @@
 set -euo pipefail
 export LC_ALL=C
 
-# defaults
 KMER_SIZE=21
 MIN_COUNT=3
-MEM="16G"
 TRIGGER_SEQ=""
 THREADS=4
 PREFIX=""
@@ -36,7 +34,6 @@ Mandatory:
 Optional:
   -k, --kmer-size      K-mer size (1-63)                              [default: ${KMER_SIZE}]
   --min-count          Minimum k-mer count (KMC -ci)                  [default: ${MIN_COUNT}]
-  --mem                RAM budget for KMC (e.g. 16G, 512M)            [default: ${MEM}]
   --trigger-seq        Retain only k-mers starting with this seq      [default: off]
   -t, --threads        CPU threads                                    [default: ${THREADS}]
   --tmpdir             Parent directory for the temporary work folder [default: current dir]
@@ -55,7 +52,6 @@ while [[ $# -gt 0 ]]; do
         --prefix)         PREFIX="$2";        shift 2 ;;
         -k|--kmer-size)   KMER_SIZE="$2";    shift 2 ;;
         --min-count)      MIN_COUNT="$2";    shift 2 ;;
-        --mem)            MEM="$2";          shift 2 ;;
         --trigger-seq)    TRIGGER_SEQ="$2";  shift 2 ;;
         -t|--threads)     THREADS="$2";      shift 2 ;;
         --tmpdir)         TMPDIR_BASE="$2";  shift 2 ;;
@@ -81,9 +77,6 @@ done
 
 [[ "$THREADS" =~ ^[1-9][0-9]*$ ]] || {
     error "--threads must be a positive integer."; exit 1; }
-
-[[ "$MEM" =~ ^[0-9]+[GgMm]$ ]] || {
-    error "--mem must be a number followed by G or M (e.g. 16G, 512M)."; exit 1; }
 
 if [[ -n "$TRIGGER_SEQ" ]]; then
     [[ "$TRIGGER_SEQ" =~ ^[ACGTacgt]+$ ]] || {
@@ -119,26 +112,10 @@ mkdir -p "$DUMP_TMPDIR"
 cleanup() { rm -rf "$DUMP_TMPDIR"; }
 trap cleanup EXIT
 
-mem_to_kmc_gb() {
-    local mem="$1"
-    local num unit
-    num="${mem//[GgMm]/}"
-    unit="${mem//[0-9]/}"
-    unit="${unit^^}"
-    if [[ "$unit" == "G" ]]; then
-        echo "$num"
-    else
-        local gb=$(( (num + 1023) / 1024 ))
-        [[ "$gb" -lt 1 ]] && gb=1
-        echo "$gb"
-    fi
-}
-KMC_MEM_GB=$(mem_to_kmc_gb "$MEM")
-
 OUTPUT="${PREFIX}.dump.gz"
 
 info "SEXmer-dump starting"
-info "Parameters : kmer-size=${KMER_SIZE}, min-count=${MIN_COUNT}, mem=${MEM}, threads=${THREADS}"
+info "Parameters : kmer-size=${KMER_SIZE}, min-count=${MIN_COUNT}, threads=${THREADS}"
 info "Trigger-seq: ${TRIGGER_SEQ:-off}"
 info "Input reads: ${READS[*]}"
 info "Output     : ${OUTPUT}"
@@ -157,12 +134,11 @@ KMC_DB="${DUMP_TMPDIR}/kmc_db"
 KMC_TMP="${DUMP_TMPDIR}/kmc_tmp"
 mkdir -p "$KMC_TMP"
 
-info "Running KMC (k=${KMER_SIZE}, min-count=${MIN_COUNT}, mem=${KMC_MEM_GB}G, threads=${THREADS})..."
+info "Running KMC (k=${KMER_SIZE}, min-count=${MIN_COUNT}, threads=${THREADS})..."
 
 kmc \
     -k"${KMER_SIZE}" \
     -ci"${MIN_COUNT}" \
-    -m"${KMC_MEM_GB}" \
     -t"${THREADS}" \
     @"${FILES_LIST}" \
     "${KMC_DB}" \
