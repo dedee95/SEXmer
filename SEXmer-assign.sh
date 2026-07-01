@@ -27,17 +27,17 @@ usage() {
 
 SEXmer-assign.sh - Assign sex from unknown samples using sex-specific marker k-mers.
 
-Usage: SEXmer-assign.sh <markers.fa> -i <dump_files> -s <samples> --type <XY|ZW> [OPTIONS]
+Usage: SEXmer-assign.sh <markers.fa> -i <dump_files> --type <XY|ZW> [OPTIONS]
 
 Mandatory:
   <markers.fa>          SEXmer marker FASTA from SEXmer-scan.
                         For XY systems, provide MSK marker FASTA.
                         For ZW systems, provide FSK marker FASTA.
   -i, --input           Comma-separated list of unknown SEXmer dump files (.dump or .dump.gz)
-  -s, --sample          Comma-separated list of sample names, same order as --input
   --type                Sex chromosome system: XY or ZW
 
 Optional:
+  -s, --sample          Comma-separated list of sample names, same order as --input
   --marker-seq          Additional gene/marker FASTA for marker-sequence k-mer coverage evidence
   -k, --kmer-size       K-mer size used for marker parsing             [default: ${KMER_SIZE}]
   -t, --threads         Number of samples processed in parallel        [default: ${THREADS}]
@@ -72,7 +72,6 @@ done
 MARKERS="${POSITIONAL[0]}"
 
 [[ -z "$UNKNOWN_INPUT" ]] && { error "-i/--input files not specified."; usage; }
-[[ -z "$SAMPLE_INPUT" ]]  && { error "-s/--sample names not specified."; usage; }
 [[ -z "$TYPE" ]]          && { error "--type not specified."; usage; }
 
 [[ -r "$MARKERS" ]] || { error "Cannot read marker FASTA file: $MARKERS"; exit 1; }
@@ -118,17 +117,44 @@ split_csv_lines() {
     done
 }
 
+derive_sample_name() {
+    local path="$1"
+    local name
+    name="$(basename "$path")"
+    case "$name" in
+        *.dump.gz) name="${name%.dump.gz}" ;;
+        *.dump)    name="${name%.dump}" ;;
+        *.txt.gz)  name="${name%.txt.gz}" ;;
+        *.gz)      name="${name%.gz}" ;;
+    esac
+    echo "$name"
+}
+
 UNKNOWN_FILES=()
 UNKNOWN_SAMPLES=()
 while IFS= read -r item; do UNKNOWN_FILES+=("$item"); done < <(split_csv_lines "$UNKNOWN_INPUT")
-while IFS= read -r item; do UNKNOWN_SAMPLES+=("$item"); done < <(split_csv_lines "$SAMPLE_INPUT")
 
-[[ ${#UNKNOWN_FILES[@]} -eq ${#UNKNOWN_SAMPLES[@]} ]] || {
-    error "Number of --input files (${#UNKNOWN_FILES[@]}) must match number of --sample names (${#UNKNOWN_SAMPLES[@]})."; exit 1; }
+if [[ -n "$SAMPLE_INPUT" ]]; then
+    while IFS= read -r item; do UNKNOWN_SAMPLES+=("$item"); done < <(split_csv_lines "$SAMPLE_INPUT")
+    [[ ${#UNKNOWN_FILES[@]} -eq ${#UNKNOWN_SAMPLES[@]} ]] || {
+        error "Number of --input files (${#UNKNOWN_FILES[@]}) must match number of --sample names (${#UNKNOWN_SAMPLES[@]})."; exit 1; }
+else
+    for f in "${UNKNOWN_FILES[@]}"; do
+        UNKNOWN_SAMPLES+=("$(derive_sample_name "$f")")
+    done
+fi
 
 for f in "${UNKNOWN_FILES[@]}"; do
     [[ -r "$f" ]] || { error "Cannot read dump file: $f"; exit 1; }
 done
+
+if [[ ${#UNKNOWN_SAMPLES[@]} -gt 1 ]]; then
+    DUP_SAMPLE=$(printf '%s
+' "${UNKNOWN_SAMPLES[@]}" | sort | uniq -d | head -n 1 || true)
+    if [[ -n "$DUP_SAMPLE" ]]; then
+        warn "Duplicate sample name detected: ${DUP_SAMPLE}. Consider providing unique names with -s/--sample."
+    fi
+fi
 
 ASSIGN_TMPDIR="${TMPDIR_BASE}/sexmer_assign_tmp_$$"
 mkdir -p "$ASSIGN_TMPDIR"
@@ -149,6 +175,11 @@ info "Parameters: kmer-size=${KMER_SIZE}, type=${TYPE}"
 info "Settings  : threads=${THREADS}"
 info "Marker file    : ${MARKERS}"
 info "Marker-seq file: ${MARKER_SEQ:-off}"
+if [[ -n "$SAMPLE_INPUT" ]]; then
+    info "Sample names   : provided by -s/--sample"
+else
+    info "Sample names   : derived from dump filenames"
+fi
 info "Input samples  : ${#UNKNOWN_FILES[@]}"
 info "Temp dir       : ${ASSIGN_TMPDIR}"
 info "Output         : ${REPORT_OUT}"
@@ -162,8 +193,8 @@ import gzip
 import math
 import multiprocessing as mp
 import os
+import re
 import sys
-from statistics import median
 from typing import Dict, Iterable, Iterator, List, Optional, Sequence, Set, Tuple
 
 BASE_CODE = {"A": 0, "C": 1, "G": 2, "T": 3}
@@ -234,7 +265,7 @@ def load_marker_kmers(path: str, k: int, label: str) -> Tuple[Set[int], Dict[str
 
     for name, seq in parse_fasta(path):
         stats["records"] += 1
-        seq = seq.replace(" ", "").replace("\t", "").upper()
+        seq = re.sub(r"\s+", "", seq).upper()
         if len(seq) < k:
             stats["short_records"] += 1
             continue
@@ -273,6 +304,19 @@ def read_sample_table(path: str) -> List[Tuple[str, str]]:
     if not rows:
         raise ValueError("No samples found in sample table")
     return rows
+
+
+def infer_marker_label(path: str, type_: str) -> Tuple[str, str]:
+    base = os.path.basename(path).lower()
+    if "msk" in base:
+        return "MSK", "filename"
+    if "fsk" in base:
+        return "FSK", "filename"
+    if type_ == "XY":
+        return "MSK", "type"
+    if type_ == "ZW":
+        return "FSK", "type"
+    return "marker", "unknown"
 
 
 def init_worker(markers: Set[int], marker_seq: Optional[Set[int]]) -> None:
@@ -335,19 +379,32 @@ def scan_dump_worker(item: Tuple[str, str]) -> Dict[str, object]:
     }
 
 
-def largest_gap_threshold(values: Sequence[float]) -> Dict[str, object]:
-    if len(values) < 2:
+def build_classification_model(values: Sequence[float]) -> Dict[str, object]:
+    """Build a safe classification model from marker-ratio values.
+
+    Largest-gap clustering is used only when the sample set shows a clear
+    low-signal and high-signal group. Otherwise, the script uses fixed signal
+    rules so all-male, all-female, and one-sample runs are not forced into two
+    artificial clusters.
+    """
+    if not values:
+        raise ValueError("No marker-ratio values available for classification")
+
+    sorted_vals = sorted(values)
+    score_min = sorted_vals[0]
+    score_max = sorted_vals[-1]
+
+    if len(sorted_vals) < 2:
         return {
-            "method": "fixed_50_single_sample",
-            "threshold": 50.0,
+            "method": "fixed signal rule",
+            "threshold": None,
             "largest_gap": 0.0,
             "gap_low": None,
             "gap_high": None,
-            "separation": "not_available",
-            "warning": "Only one sample was provided; clustering is not possible. Fixed 50% threshold was used.",
+            "separation": "one sample",
+            "warning": "Only one sample was provided; largest-gap clustering is not possible. Fixed high/low marker signal rule was used.",
         }
 
-    sorted_vals = sorted(values)
     best_gap = -1.0
     best_low = sorted_vals[0]
     best_high = sorted_vals[1]
@@ -357,19 +414,44 @@ def largest_gap_threshold(values: Sequence[float]) -> Dict[str, object]:
             best_gap = gap
             best_low = a
             best_high = b
+
     threshold = (best_low + best_high) / 2.0
-    if best_gap >= 20.0:
-        separation = "strong"
-        warning = ""
-    elif best_gap >= 10.0:
-        separation = "moderate"
-        warning = "Marker-ratio separation is moderate; inspect the result manually."
+
+    # Use largest-gap clustering only when the data contain both clear low and
+    # high marker signal groups. This avoids false splitting when all unknown
+    # samples are actually the same sex.
+    has_low_signal = score_min <= 20.0
+    has_high_signal = score_max >= 80.0
+    if best_gap >= 20.0 and has_low_signal and has_high_signal:
+        if best_gap >= 50.0:
+            separation = "strong"
+            warning = ""
+        else:
+            separation = "moderate"
+            warning = "Marker-ratio separation is moderate; inspect the result manually."
+        return {
+            "method": "largest gap clustering",
+            "threshold": threshold,
+            "largest_gap": best_gap,
+            "gap_low": best_low,
+            "gap_high": best_high,
+            "separation": separation,
+            "warning": warning,
+        }
+
+    if score_min >= 80.0:
+        separation = "single high-signal group"
+        warning = "All samples have high marker signal; fixed signal rule was used instead of forcing two clusters."
+    elif score_max <= 20.0:
+        separation = "single low-signal group"
+        warning = "All samples have low marker signal; fixed signal rule was used instead of forcing two clusters."
     else:
-        separation = "weak"
-        warning = "Marker-ratio separation is weak; assignment confidence is low."
+        separation = "no clear separation"
+        warning = "Marker-ratio separation is weak or incomplete; fixed signal rule was used and intermediate samples are ambiguous."
+
     return {
-        "method": "largest_gap_clustering",
-        "threshold": threshold,
+        "method": "fixed signal rule",
+        "threshold": None,
         "largest_gap": best_gap,
         "gap_low": best_low,
         "gap_high": best_high,
@@ -378,27 +460,54 @@ def largest_gap_threshold(values: Sequence[float]) -> Dict[str, object]:
     }
 
 
-def assign_sex(ratio: float, type_: str, threshold: float) -> str:
-    high = ratio >= threshold
+def high_signal_sex(type_: str) -> str:
     if type_ == "XY":
-        return "male" if high else "female"
+        return "male"
     if type_ == "ZW":
-        return "female" if high else "male"
+        return "female"
     raise ValueError(f"Unsupported type: {type_}")
 
 
-def confidence_for_ratio(ratio: float, threshold_info: Dict[str, object]) -> str:
-    method = str(threshold_info["method"])
-    separation = str(threshold_info["separation"])
-    if method == "fixed_50_single_sample":
-        if ratio >= 80.0 or ratio <= 20.0:
+def low_signal_sex(type_: str) -> str:
+    if type_ == "XY":
+        return "female"
+    if type_ == "ZW":
+        return "male"
+    raise ValueError(f"Unsupported type: {type_}")
+
+
+def assign_sex(score: float, type_: str, model: Dict[str, object]) -> str:
+    method = str(model["method"])
+    if method == "largest gap clustering":
+        threshold = float(model["threshold"])
+        return high_signal_sex(type_) if score >= threshold else low_signal_sex(type_)
+
+    # Fixed signal rule. Do not force classification for intermediate signal.
+    if score >= 80.0:
+        return high_signal_sex(type_)
+    if score <= 20.0:
+        return low_signal_sex(type_)
+    return "ambiguous"
+
+
+def confidence_for_ratio(score: float, model: Dict[str, object]) -> str:
+    method = str(model["method"])
+    separation = str(model["separation"])
+    if method == "largest gap clustering":
+        if separation == "strong":
+            return "high"
+        if separation == "moderate":
             return "medium"
         return "low"
-    if separation == "strong":
-        return "high"
-    if separation == "moderate":
+
+    # Fixed signal rule confidence.
+    if 20.0 < score < 80.0:
+        return "low"
+    if separation == "one sample":
         return "medium"
-    return "low"
+    if separation in {"single high-signal group", "single low-signal group"}:
+        return "high"
+    return "medium"
 
 
 def pct(num: int, den: int) -> float:
@@ -407,7 +516,7 @@ def pct(num: int, den: int) -> float:
     return (num / den) * 100.0
 
 
-def fmt_float(value: object, digits: int = 4) -> str:
+def fmt_float(value: object, digits: int = 4, percent: bool = False) -> str:
     if value is None:
         return "NA"
     try:
@@ -416,90 +525,70 @@ def fmt_float(value: object, digits: int = 4) -> str:
         return str(value)
     if math.isnan(f) or math.isinf(f):
         return "NA"
-    return f"{f:.{digits}f}"
+    text = f"{f:.{digits}f}"
+    return f"{text}%" if percent else text
 
 
 def write_report(
     out_path: str,
-    markers_path: str,
-    marker_seq_path: Optional[str],
-    k: int,
     type_: str,
-    threads: int,
+    marker_label: str,
+    marker_label_source: str,
     marker_stats: Dict[str, int],
     marker_seq_stats: Optional[Dict[str, int]],
     results: List[Dict[str, object]],
     threshold_info: Dict[str, object],
+    score_label: str,
 ) -> None:
     marker_total = int(marker_stats["unique_kmers"])
     marker_seq_total = int(marker_seq_stats["unique_kmers"]) if marker_seq_stats is not None else 0
-    threshold = float(threshold_info["threshold"])
+    scores = [float(r["classification_score"]) for r in results]
+    score_min = min(scores) if scores else 0.0
+    score_max = max(scores) if scores else 0.0
 
-    ratios = [float(r["marker_ratio"]) for r in results]
-    ratio_min = min(ratios) if ratios else 0.0
-    ratio_max = max(ratios) if ratios else 0.0
-    ratio_median = median(ratios) if ratios else 0.0
+    if marker_label in {"MSK", "FSK"}:
+        ratio_col = f"{marker_label}_ratio(%)"
+        model_prefix = f"{marker_label}-ratio"
+    else:
+        ratio_col = "marker_ratio(%)"
+        model_prefix = "Marker-ratio"
+    if marker_seq_stats is not None:
+        model_prefix = "Classification-score"
 
     with open(out_path, "wt") as out:
-        out.write("SEXmer-assign result\n\n")
-        out.write("Run information\n")
-        out.write(f"Marker file        : {markers_path}\n")
-        out.write(f"Marker-seq file    : {marker_seq_path if marker_seq_path else 'off'}\n")
-        out.write(f"System type        : {type_}\n")
-        out.write("Expected marker    : MSK for XY, FSK for ZW\n")
-        out.write(f"K-mer size         : {k}\n")
-        out.write(f"Threads            : {threads}\n")
-        out.write(f"Samples            : {len(results)}\n\n")
-
-        out.write("Marker statistics\n")
-        out.write(f"Marker FASTA records        : {marker_stats['records']}\n")
-        out.write(f"Exact k-mer records         : {marker_stats['exact_kmer_records']}\n")
-        out.write(f"Long sequence records       : {marker_stats['long_records']}\n")
-        out.write(f"Skipped short records       : {marker_stats['short_records']}\n")
-        out.write(f"Bad exact-kmer records      : {marker_stats['bad_exact_records']}\n")
-        out.write(f"Raw marker k-mers           : {marker_stats['raw_kmers']}\n")
-        out.write(f"Unique marker k-mers        : {marker_total}\n\n")
-
-        if marker_seq_stats is not None:
-            out.write("Marker-seq statistics\n")
-            out.write(f"Marker-seq FASTA records    : {marker_seq_stats['records']}\n")
-            out.write(f"Exact k-mer records         : {marker_seq_stats['exact_kmer_records']}\n")
-            out.write(f"Long sequence records       : {marker_seq_stats['long_records']}\n")
-            out.write(f"Skipped short records       : {marker_seq_stats['short_records']}\n")
-            out.write(f"Bad exact-kmer records      : {marker_seq_stats['bad_exact_records']}\n")
-            out.write(f"Raw marker-seq k-mers       : {marker_seq_stats['raw_kmers']}\n")
-            out.write(f"Unique marker-seq k-mers    : {marker_seq_total}\n\n")
-
+        out.write("SEXmer assign result\n\n")
         out.write("Classification model\n")
-        out.write(f"Method              : {threshold_info['method']}\n")
-        out.write(f"Marker-ratio minimum: {fmt_float(ratio_min, 4)}\n")
-        out.write(f"Marker-ratio median : {fmt_float(ratio_median, 4)}\n")
-        out.write(f"Marker-ratio maximum: {fmt_float(ratio_max, 4)}\n")
-        out.write(f"Largest gap         : {fmt_float(threshold_info['largest_gap'], 4)}\n")
-        out.write(f"Gap lower value     : {fmt_float(threshold_info['gap_low'], 4)}\n")
-        out.write(f"Gap upper value     : {fmt_float(threshold_info['gap_high'], 4)}\n")
-        out.write(f"Decision threshold  : {fmt_float(threshold, 4)}\n")
-        out.write(f"Separation          : {threshold_info['separation']}\n")
+        out.write(f"Method : {threshold_info['method']}\n")
+        out.write(f"Score used : {score_label}\n")
+        out.write(f"{model_prefix} minimum : {fmt_float(score_min, 4, True)}\n")
+        out.write(f"{model_prefix} maximum : {fmt_float(score_max, 4, True)}\n")
+        out.write(f"Gap lower value : {fmt_float(threshold_info['gap_low'], 4, True)}\n")
+        out.write(f"Gap upper value : {fmt_float(threshold_info['gap_high'], 4, True)}\n")
+        out.write(f"Largest gap : {fmt_float(threshold_info['largest_gap'], 4, True)}\n")
+        out.write(f"Separation : {threshold_info['separation']}\n")
         if threshold_info.get("warning"):
-            out.write(f"Warning             : {threshold_info['warning']}\n")
+            out.write(f"Warning : {threshold_info['warning']}\n")
         out.write("\n")
 
-        out.write("Sample results\n")
         header = [
             "sample",
             "assignment",
             "confidence",
             "marker_detected",
             "marker_total",
-            "marker_ratio",
+            ratio_col,
             "marker_count_sum",
-            "sample_total_kmers",
-            "sample_total_counts",
         ]
         if marker_seq_stats is not None:
-            header.extend(["marker_seq_detected", "marker_seq_total", "marker_seq_cov", "marker_seq_count_sum"])
-        header.extend(["malformed_lines", "dump_file"])
+            header.extend([
+                "marker_seq_detected",
+                "marker_seq_total",
+                "marker_seq_cov(%)",
+                "marker_seq_count_sum",
+                "classification_score(%)",
+            ])
         out.write("\t".join(header) + "\n")
+
         for r in sorted(results, key=lambda x: str(x["sample"])):
             row = [
                 str(r["sample"]),
@@ -509,8 +598,6 @@ def write_report(
                 str(marker_total),
                 fmt_float(r["marker_ratio"], 4),
                 str(r["marker_count_sum"]),
-                str(r["sample_total_kmers"]),
-                str(r["sample_total_counts"]),
             ]
             if marker_seq_stats is not None:
                 row.extend([
@@ -518,18 +605,21 @@ def write_report(
                     str(marker_seq_total),
                     fmt_float(r["marker_seq_cov"], 4),
                     str(r["marker_seq_count_sum"]),
+                    fmt_float(r["classification_score"], 4),
                 ])
-            row.extend([str(r["malformed_lines"]), str(r["dump"])])
             out.write("\t".join(row) + "\n")
 
         out.write("\nInterpretation notes\n")
         if type_ == "XY":
-            out.write("For XY mode, the marker FASTA should be MSK. Samples above the threshold are assigned male.\n")
-            out.write("Samples below the threshold are assigned female.\n")
+            out.write(f"High {marker_label} ratio = male; low {marker_label} ratio = female.\n")
         else:
-            out.write("For ZW mode, the marker FASTA should be FSK. Samples above the threshold are assigned female.\n")
-            out.write("Samples below the threshold are assigned male.\n")
-        out.write("The optional marker-seq result is supporting evidence calculated by k-mer coverage, not read mapping.\n")
+            out.write(f"High {marker_label} ratio = female; low {marker_label} ratio = male.\n")
+        out.write("Largest-gap clustering is used only when both low-ratio and high-ratio groups are clear.\n")
+        out.write("Fixed signal rule: high ratio >= 80%, low ratio <= 20%, intermediate = ambiguous.\n")
+        if marker_seq_stats is not None:
+            out.write("Marker-seq coverage is k-mer based, not read mapping, and is included in the classification score.\n")
+        if marker_label_source == "type":
+            out.write(f"Marker label was inferred from --type {type_}; use MSK naming for XY or FSK naming for ZW to make it explicit.\n")
 
 
 def main() -> int:
@@ -544,15 +634,25 @@ def main() -> int:
     args = ap.parse_args()
 
     try:
+        marker_label, marker_label_source = infer_marker_label(args.markers, args.type)
+        if marker_label_source == "type":
+            log("Warning", f"Marker type was not detected from file name; using expected {marker_label} label for {args.type} mode.")
+
         log("Info", "Building SEXmer marker k-mer index...")
         markers, marker_stats = load_marker_kmers(args.markers, args.kmer_size, "marker")
-        log("Info", f"  Unique marker k-mers: {len(markers)} (2-bit encoded)")
+        log("Info", f"  Marker label          : {marker_label}")
+        log("Info", f"  FASTA records         : {marker_stats['records']}")
+        log("Info", f"  Exact k-mer records   : {marker_stats['exact_kmer_records']}")
+        log("Info", f"  Long sequence records : {marker_stats['long_records']}")
+        log("Info", f"  Skipped short records : {marker_stats['short_records']}")
+        log("Info", f"  Unique marker k-mers  : {len(markers)} (2-bit encoded)")
 
         marker_seq: Optional[Set[int]] = None
         marker_seq_stats: Optional[Dict[str, int]] = None
         if args.marker_seq:
             log("Info", "Building optional marker-seq k-mer index...")
             marker_seq, marker_seq_stats = load_marker_kmers(args.marker_seq, args.kmer_size, "marker-seq")
+            log("Info", f"  Marker-seq FASTA records: {marker_seq_stats['records']}")
             log("Info", f"  Unique marker-seq k-mers: {len(marker_seq)} (2-bit encoded)")
 
         samples = read_sample_table(args.sample_table)
@@ -575,35 +675,43 @@ def main() -> int:
             r["marker_ratio"] = pct(int(r["marker_detected"]), marker_total)
             if marker_seq is not None:
                 r["marker_seq_cov"] = pct(int(r["marker_seq_detected"]), marker_seq_total)
+                r["classification_score"] = (float(r["marker_ratio"]) + float(r["marker_seq_cov"])) / 2.0
             else:
                 r["marker_seq_cov"] = 0.0
+                r["classification_score"] = float(r["marker_ratio"])
 
-        threshold_info = largest_gap_threshold([float(r["marker_ratio"]) for r in results])
-        threshold = float(threshold_info["threshold"])
+        if marker_seq is not None:
+            score_label = f"average of {marker_label} ratio and marker-seq coverage (%)"
+        else:
+            score_label = f"{marker_label} ratio (%)" if marker_label in {"MSK", "FSK"} else "marker ratio (%)"
+
+        threshold_info = build_classification_model([float(r["classification_score"]) for r in results])
         for r in results:
-            ratio = float(r["marker_ratio"])
-            r["assignment"] = assign_sex(ratio, args.type, threshold)
-            r["confidence"] = confidence_for_ratio(ratio, threshold_info)
+            score = float(r["classification_score"])
+            r["assignment"] = assign_sex(score, args.type, threshold_info)
+            r["confidence"] = confidence_for_ratio(score, threshold_info)
 
         if threshold_info.get("warning"):
             log("Warning", str(threshold_info["warning"]))
 
         write_report(
             args.out,
-            args.markers,
-            args.marker_seq if args.marker_seq else None,
-            args.kmer_size,
             args.type,
-            workers,
+            marker_label,
+            marker_label_source,
             marker_stats,
             marker_seq_stats,
             results,
             threshold_info,
+            score_label,
         )
 
         log("Info", "SEXmer assignment complete.")
-        log("Info", f"  Decision threshold: {float(threshold_info['threshold']):.4f}")
-        log("Info", f"  Separation        : {threshold_info['separation']}")
+        log("Info", f"  Method        : {threshold_info['method']}")
+        log("Info", f"  Largest gap   : {float(threshold_info['largest_gap']):.4f}%")
+        log("Info", f"  Gap lower     : {fmt_float(threshold_info['gap_low'], 4, True)}")
+        log("Info", f"  Gap upper     : {fmt_float(threshold_info['gap_high'], 4, True)}")
+        log("Info", f"  Separation    : {threshold_info['separation']}")
         return 0
     except Exception as exc:
         log("Error", str(exc))
