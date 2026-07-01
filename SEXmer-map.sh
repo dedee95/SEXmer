@@ -26,7 +26,7 @@ error()   { echo "[Error] $*"  >&2; }
 usage() {
     cat >&2 <<EOF
 
-SEXmer-map.sh - Map SEXmer marker k-mers and optional extracted reads to reference genome.
+SEXmer-map.sh - Map SEXmer marker k-mers and optional extracted reads to reference genome windows.
 
 Usage: SEXmer-map.sh <genome.fa> <markers.fa> --prefix <prefix> [OPTIONS]
 
@@ -934,6 +934,84 @@ if [[ ${#READ_FILES[@]} -gt 0 ]]; then
     mkdir -p "$BBMAP_INDEX_DIR"
     : > "$SAM_TMP"
 
+    BBMAP_REF_GENOME="${MAP_TMPDIR}/bbmap_reference.fa"
+    BBMAP_REF_CHUNK_MAP="${MAP_TMPDIR}/bbmap_reference.chunk_map.tsv"
+    BBMAP_CHUNK_SIZE=500000000
+    BBMAP_CHUNK_OVERLAP=10000
+
+    info "Preparing BBMap-compatible reference for read validation..."
+    python3 - "$GENOME" "$BBMAP_REF_GENOME" "$BBMAP_REF_CHUNK_MAP" "$BBMAP_CHUNK_SIZE" "$BBMAP_CHUNK_OVERLAP" <<'PY'
+import gzip
+import sys
+
+genome, out_fa, map_tsv, chunk_size_s, overlap_s = sys.argv[1:6]
+chunk_size = int(chunk_size_s)
+overlap = int(overlap_s)
+if overlap < 0 or overlap >= chunk_size:
+    raise SystemExit("Invalid BBMap chunk overlap")
+
+def open_text(path):
+    return gzip.open(path, "rt") if path.endswith(".gz") else open(path, "rt")
+
+def wrap_write(out, seq, width=80):
+    for i in range(0, len(seq), width):
+        out.write(seq[i:i+width] + "\n")
+
+def emit_record(out, mp, name, seq):
+    length = len(seq)
+    if length == 0:
+        return 0, 0
+    if length <= chunk_size:
+        out.write(f">{name}\n")
+        wrap_write(out, seq)
+        return 1, 0
+    chunks = 0
+    step = chunk_size - overlap
+    start = 0
+    while start < length:
+        end = min(start + chunk_size, length)
+        chunk_name = f"{name}__SEXMERCHUNK__{start}__{end}"
+        out.write(f">{chunk_name}\n")
+        wrap_write(out, seq[start:end])
+        mp.write(f"{chunk_name}\t{name}\t{start}\t{end}\n")
+        chunks += 1
+        if end == length:
+            break
+        start += step
+    return chunks, 1
+
+records = 0
+chunks = 0
+split_records = 0
+name = None
+parts = []
+with open_text(genome) as fh, open(out_fa, "w") as out, open(map_tsv, "w") as mp:
+    mp.write("chunk\toriginal\tstart\tend\n")
+    for raw in fh:
+        line = raw.strip()
+        if not line:
+            continue
+        if line.startswith(">"):
+            if name is not None:
+                c, sp = emit_record(out, mp, name, "".join(parts))
+                records += 1
+                chunks += c
+                split_records += sp
+            name = line[1:].split()[0]
+            parts = []
+        else:
+            parts.append(line)
+    if name is not None:
+        c, sp = emit_record(out, mp, name, "".join(parts))
+        records += 1
+        chunks += c
+        split_records += sp
+
+if records == 0 or chunks == 0:
+    raise SystemExit(f"No sequence found while preparing BBMap reference: {genome}")
+print(f"[Info] BBMap reference records: original={records}, bbmap_records={chunks}, split_large_records={split_records}", file=sys.stderr)
+PY
+
     MAPPER="bbmap.sh"
     if [[ "$SEQ_TYPE" == "ONT" || "$SEQ_TYPE" == "PacBio" ]]; then
         if command -v mapPacBio.sh &>/dev/null; then
@@ -949,11 +1027,11 @@ if [[ ${#READ_FILES[@]} -gt 0 ]]; then
         local r2="${2:-}"
         if [[ -n "$r2" ]]; then
             info "Running BBMap paired-end validation: $(basename "$r1") , $(basename "$r2")"
-            "$MAPPER" ref="$GENOME" path="$BBMAP_INDEX_DIR" in="$r1" in2="$r2" out="$SAM_TMP" overwrite=t threads="$THREADS" 2>&1 \
+            "$MAPPER" ref="$BBMAP_REF_GENOME" path="$BBMAP_INDEX_DIR" in="$r1" in2="$r2" out="$SAM_TMP" overwrite=t threads="$THREADS" 2>&1 \
                 | while IFS= read -r line; do info "  [bbmap] $line"; done
         else
             info "Running BBMap single/long-read validation: $(basename "$r1")"
-            "$MAPPER" ref="$GENOME" path="$BBMAP_INDEX_DIR" in="$r1" out="$SAM_TMP" overwrite=t threads="$THREADS" 2>&1 \
+            "$MAPPER" ref="$BBMAP_REF_GENOME" path="$BBMAP_INDEX_DIR" in="$r1" out="$SAM_TMP" overwrite=t threads="$THREADS" 2>&1 \
                 | while IFS= read -r line; do info "  [bbmap] $line"; done
         fi
     }
@@ -971,7 +1049,7 @@ if [[ ${#READ_FILES[@]} -gt 0 ]]; then
         for rf in "${READ_FILES[@]}"; do
             TMP_ONE="${MAP_TMPDIR}/bbmap_one_${FIRST}.sam"
             info "Running BBMap for read file ${FIRST}/${#READ_FILES[@]}: $(basename "$rf")"
-            "$MAPPER" ref="$GENOME" path="$BBMAP_INDEX_DIR" in="$rf" out="$TMP_ONE" overwrite=t threads="$THREADS" 2>&1 \
+            "$MAPPER" ref="$BBMAP_REF_GENOME" path="$BBMAP_INDEX_DIR" in="$rf" out="$TMP_ONE" overwrite=t threads="$THREADS" 2>&1 \
                 | while IFS= read -r line; do info "  [bbmap] $line"; done
             if [[ "$FIRST" -eq 1 ]]; then
                 cat "$TMP_ONE" > "$SAM_TMP"
@@ -984,10 +1062,46 @@ if [[ ${#READ_FILES[@]} -gt 0 ]]; then
 
     [[ -s "$SAM_TMP" ]] || { error "BBMap did not produce SAM output for read validation."; exit 1; }
 
+    SAM_FOR_WINDOWS="$SAM_TMP"
+    if [[ -s "$BBMAP_REF_CHUNK_MAP" ]] && [[ $(wc -l < "$BBMAP_REF_CHUNK_MAP") -gt 1 ]]; then
+        SAM_ORIGINAL_COORDS="${MAP_TMPDIR}/bbmap_stream.original_coords.sam"
+        info "Converting BBMap chunk coordinates back to original genome coordinates..."
+        python3 - "$SAM_TMP" "$BBMAP_REF_CHUNK_MAP" "$SAM_ORIGINAL_COORDS" <<'PY'
+import sys
+
+sam_in, map_tsv, sam_out = sys.argv[1:4]
+chunk_map = {}
+with open(map_tsv) as fh:
+    header = next(fh, None)
+    for raw in fh:
+        chunk, original, start, end = raw.rstrip("\n").split("\t")
+        chunk_map[chunk] = (original, int(start))
+
+converted = 0
+with open(sam_in) as inp, open(sam_out, "w") as out:
+    for raw in inp:
+        if raw.startswith("@"):
+            # Headers are ignored by the downstream parser; keep them untouched.
+            out.write(raw)
+            continue
+        parts = raw.rstrip("\n").split("\t")
+        if len(parts) >= 4 and parts[2] in chunk_map and parts[3].isdigit() and int(parts[3]) > 0:
+            original, offset = chunk_map[parts[2]]
+            parts[2] = original
+            parts[3] = str(int(parts[3]) + offset)
+            converted += 1
+            out.write("\t".join(parts) + "\n")
+        else:
+            out.write(raw)
+print(f"[Info] SAM alignments converted from BBMap chunks: {converted}", file=sys.stderr)
+PY
+        SAM_FOR_WINDOWS="$SAM_ORIGINAL_COORDS"
+    fi
+
     info "Converting BBMap SAM output to sliding-window read depth table..."
     python3 "$SCANNER" sam-windows \
         --genome "$GENOME" \
-        --sam "$SAM_TMP" \
+        --sam "$SAM_FOR_WINDOWS" \
         --window "$WINDOW" \
         --step "$STEP" \
         --out "$READS_OUT"
