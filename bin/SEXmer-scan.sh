@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SEXmer scan - K-mer sex-specificity classifier from KMC dump files.
+# SEXmer scan - Scan all kmer sequences and classify them as MSK, FSK, MBK, FBK, or neutral.
 # Author: Dede Kurniawan 
 
 set -euo pipefail
@@ -29,28 +29,28 @@ error()   { echo "[Error] $*"  >&2; }
 usage() {
     cat <<EOF
 
-SEXmer scan - K-mer sex-specificity classifier from KMC dump files.
+SEXmer scan - Scan all kmer sequences and classify them as MSK, FSK, MBK, FBK, or neutral.
 
 Usage: SEXmer scan -m <male_files> -f <female_files> [OPTIONS]
 
 Mandatory:
-  -m, --male           Comma-separated list of male dump files
-  -f, --female         Comma-separated list of female dump files
+  -m, --male           Specify male dump files (separated by commas)
+  -f, --female         Specify female dump files (separated by commas)
 
 Optional:
-  --prefix             Output filename prefix                          [default: output]
-  -o, --outdir         Output directory                                [default: current dir]
-  --mem                Memory budget for sort operations (e.g. 8G)     [default: ${MEM}]
-  -t, --threads        CPU threads                                     [default: ${THREADS}]
+  --prefix             The prefix used on generated files              [default: output]
+  -o, --outdir         Specify output directory name                   [default: current dir]
+  --mem                Specify max MEM for this task (e.g. 8G)         [default: ${MEM}]
+  -t, --threads        Specify CPU threads for this task               [default: ${THREADS}]
   --neutral-max        Maximum neutral k-mers to retain, 0=keep all    [default: ${NEUTRAL_MAX}]
   --tmpdir             Parent directory for the temporary work folder  [default: current dir]
   --min-count          Minimum k-mer count to retain                   [default: ${MIN_COUNT}]
   --max-count          Maximum pooled k-mer count within one sex       [default: ${MAX_COUNT}]
-  --fold-threshold     Fold-change cutoff for MBK/FBK                  [default: ${FOLD_THRESHOLD}]
-  --seed               Random seed for neutral k-mer sub-sampling      [default: ${SEED}]
-  --no-plot            Do not generate visualization plots
-  --plot-format        Plot format: svg, png, or pdf                   [default: ${PLOT_FORMAT}]
-  -h, --help           Show this help and exit
+  --fold-threshold     Specify fold-change cutoff for MBK/FBK          [default: ${FOLD_THRESHOLD}]
+  --seed               Specify random seed for neutral k-mer sampling  [default: ${SEED}]
+  --no-plot            Do not generate any visualization
+  --plot-format        Specify plot format: svg, png, or pdf           [default: ${PLOT_FORMAT}]
+  -h, --help           Show this help message and exit
 
 EOF
 }

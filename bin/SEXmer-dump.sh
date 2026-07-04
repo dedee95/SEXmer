@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SEXmer dump - Generate a filtered k-mer dump file for a single sample.
+# SEXmer dump - Generate and filter a kmer dump sequence from raw WGS reads.
 # Author: Dede Kurniawan
 
 set -euo pipefail
@@ -23,23 +23,23 @@ error()   { echo "[Error] $*"   >&2; }
 usage() {
     cat <<EOF
 
-SEXmer dump - Generate a filtered k-mer dump file for a single sample.
+SEXmer dump - Generate and filter a kmer dump sequence from raw WGS reads.
 
 Usage: SEXmer dump --prefix <sample> <reads_1.fq.gz> [reads_2.fq.gz] [OPTIONS]
 
 Mandatory:
-  --prefix             Output filename prefix (output: <prefix>.dump.gz)
-  <reads>              One or two FASTQ files (.fq, .fastq, .fq.gz, .fastq.gz)
+  --prefix             The prefix used on generated files
+  <reads>              Raw WGS short reads or long reads (.gz is accepted)
 
 Optional:
-  -k, --kmer-size      K-mer size (1-63)                              [default: ${KMER_SIZE}]
+  -k, --kmer-size      Specify k-mer size (1-63)                      [default: ${KMER_SIZE}]
   --min-count          Minimum k-mer count (KMC -ci)                  [default: ${MIN_COUNT}]
-  --trigger-seq        Retain only k-mers starting with this seq      [default: off]
-  -t, --threads        CPU threads                                    [default: ${THREADS}]
-  -o, --outdir         Output directory                               [default: current dir]
-  --tmpdir             Parent directory for the temporary work folder [default: current dir]
-  --kmc-bin            Directory containing kmc and kmc_dump binaries [default: PATH]
-  -h, --help           Show this help and exit
+  --trigger-seq        Specify a trigger sequence (i.e. AG)           [default: off]
+  -t, --threads        Specify CPU threads for this task              [default: ${THREADS}]
+  -o, --outdir         Specify output directory name                  [default: current dir]
+  --tmpdir             Specify parent directory for the temp files    [default: current dir]
+  --kmc-bin            Specify path containing KMC binaries           [default: PATH]
+  -h, --help           Show this help message and exit
 
 EOF
 }
