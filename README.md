@@ -70,6 +70,10 @@ Use <module> -h for module usage.
 ```
 
 ### SEXmer dump
+`SEXmer dump` is a module to generate and filter a kmer dump sequence from raw WGS reads. This module uses KMC to generate kmer because it is disk-based computational and it is faster than Jellyfish or Meryl. By default, output from the `SEXmer dump` is in `.gz` format to reduce the file size.
+
+The input data can be either WGS short reads or long reads. If you have multiple samples, you need to run this module one by one. And it's truly recommended to use `--prefix` according to your sample name to avoid mixing male and female samples.
+
 
 ### SEXmer scan
 
