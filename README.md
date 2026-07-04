@@ -13,20 +13,11 @@ Here we present SEXmer, a fast and resource-efficient command-line tool for sex 
 Currently, SEXmer contain 5 modules to facilitate sex determination region analysis using kmer.
 
 ```bash
-./SEXmer -h
-
-SEXmer: Resource-efficient toolkit for sex determination region analysis based on k-mers
-
-Usage: SEXmer <module> <parameters>
-
-Modules:
-dump         Generate filtered canonical k-mer dump files.
-scan         Identify sex-specific and sex-biased k-mers.
-reads        Extract reads containing sex-specific k-mers.
-map          Map sex-specific k-mers or sex-specific reads.
-assign       Assign sex using validated sex-specific markers.
-
-Use <module> -h for module usage.
+dump      Generate filtered canonical k-mer dump files.
+scan      Identify sex-specific and sex-biased k-mers.
+reads     Extract reads containing sex-specific k-mers.
+map       Map sex-specific k-mers or sex-specific reads.
+assign    Assign sex using validated sex-specific markers.
 ```
 
 ## Table of Contents
