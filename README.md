@@ -69,4 +69,15 @@ assign      Assign sex using validated sex-specific markers.
 Use <module> -h for module usage.
 ```
 
+### SEXmer dump
+
+### SEXmer scan
+
+### SEXmer reads
+
+### SEXmer map
+
+### SEXmer assign
+
+
 ## SEXmer Detail Algoritm
