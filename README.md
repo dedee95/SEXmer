@@ -26,10 +26,10 @@ SEXmer command line tool currently only available for Linux. SEXmer is implement
 **Dependencies**
 - [Python3](https://www.python.org/) (>3.8, tested on 3.10)
 - Python library: 
-  - numpy >=1.26 
-  - pandas >=2.2
-  - matplotlib >=3.8
-  - scipy >=1.11
+  - [numpy](https://numpy.org/) >=1.26 
+  - [pandas](https://pandas.pydata.org/) >=2.2
+  - [matplotlib](https://matplotlib.org/) >=3.8
+  - [scipy](https://scipy.org/) >=1.11
 - [KMC](https://github.com/refresh-bio/KMC) (tested on 3.2.4)
 - [BBMAP](https://bbmap.org/) (tested on 39.81)
 
@@ -54,7 +54,7 @@ export PATH="$PWD/bin:$PATH"
 
 ## Quick Usage Guide
 After all dependencies are installed, type `SEXmer -h` to verify installation.
-```bash
+```
 SEXmer: Resource-efficient toolkit for sex determination region analysis based on k-mers
 
 Usage: SEXmer <module> <parameters>
