@@ -10,20 +10,20 @@ MIN_COUNT=3
 TRIGGER_SEQ=""
 THREADS=4
 PREFIX=""
+OUTDIR="."
 TMPDIR_BASE="$(pwd)"
 KMC_BIN=""
 READS=()
 
 info()    { echo "[Info] $*"    >&2; }
-output()  { echo "[Output] $*" >&2; }
+output()  { echo "[Output] $*"  >&2; }
 warn()    { echo "[Warning] $*" >&2; }
-error()   { echo "[Error] $*"  >&2; }
+error()   { echo "[Error] $*"   >&2; }
 
 usage() {
-    cat >&2 <<EOF
+    cat <<EOF
 
 SEXmer-dump.sh - Generate a filtered k-mer dump file for a single sample.
-Requires KMC (kmc + kmc_dump) available on PATH or via --kmc-bin.
 
 Usage: SEXmer-dump.sh --prefix <sample> <reads_1.fq.gz> [reads_2.fq.gz] [OPTIONS]
 
@@ -36,15 +36,15 @@ Optional:
   --min-count          Minimum k-mer count (KMC -ci)                  [default: ${MIN_COUNT}]
   --trigger-seq        Retain only k-mers starting with this seq      [default: off]
   -t, --threads        CPU threads                                    [default: ${THREADS}]
+  -o, --outdir         Output directory                               [default: current dir]
   --tmpdir             Parent directory for the temporary work folder [default: current dir]
   --kmc-bin            Directory containing kmc and kmc_dump binaries [default: PATH]
   -h, --help           Show this help and exit
 
 EOF
-    exit 1
 }
 
-[[ $# -eq 0 ]] && usage
+[[ $# -eq 0 ]] && { usage >&2; exit 1; }
 
 # argument parsing
 while [[ $# -gt 0 ]]; do
@@ -54,17 +54,18 @@ while [[ $# -gt 0 ]]; do
         --min-count)      MIN_COUNT="$2";    shift 2 ;;
         --trigger-seq)    TRIGGER_SEQ="$2";  shift 2 ;;
         -t|--threads)     THREADS="$2";      shift 2 ;;
+        -o|--outdir)      OUTDIR="$2";       shift 2 ;;
         --tmpdir)         TMPDIR_BASE="$2";  shift 2 ;;
         --kmc-bin)        KMC_BIN="$2";      shift 2 ;;
-        -h|--help)        usage ;;
-        -*) error "Unknown option '$1'"; usage ;;
+        -h|--help)        usage; exit 0 ;;
+        -*) error "Unknown option '$1'"; usage >&2; exit 1 ;;
         *)  READS+=("$1"); shift ;;
     esac
 done
 
-[[ -z "$PREFIX" ]] && { error "--prefix is required."; usage; }
+[[ -z "$PREFIX" ]] && { error "--prefix is required."; usage >&2; exit 1; }
 
-[[ ${#READS[@]} -eq 0 ]] && { error "At least one input read file is required."; usage; }
+[[ ${#READS[@]} -eq 0 ]] && { error "At least one input read file is required."; usage >&2; exit 1; }
 
 [[ ${#READS[@]} -gt 2 ]] && {
     error "At most two read files (paired-end) are accepted. Got: ${READS[*]}"; exit 1; }
@@ -92,9 +93,10 @@ fi
 [[ -d "$TMPDIR_BASE" ]] || { error "Temporary parent directory does not exist: ${TMPDIR_BASE}"; exit 1; }
 [[ -w "$TMPDIR_BASE" ]] || { error "Temporary parent directory is not writable: ${TMPDIR_BASE}"; exit 1; }
 
-OUT_DIR="$(dirname "$PREFIX")"
-[[ "$OUT_DIR" == "." ]] && OUT_DIR="$(pwd)"
-[[ -d "$OUT_DIR" ]] || { error "Output directory does not exist: ${OUT_DIR}"; exit 1; }
+OUTPUT="${OUTDIR%/}/${PREFIX}.dump.gz"
+OUT_DIR="$(dirname "$OUTPUT")"
+mkdir -p "$OUT_DIR" || { error "Could not create output directory: ${OUT_DIR}"; exit 1; }
+[[ -d "$OUT_DIR" ]] || { error "Output path is not a directory: ${OUT_DIR}"; exit 1; }
 [[ -w "$OUT_DIR" ]] || { error "Output directory is not writable: ${OUT_DIR}"; exit 1; }
 
 for f in "${READS[@]}"; do
@@ -111,8 +113,6 @@ DUMP_TMPDIR="${TMPDIR_BASE}/sexmer_dump_tmp_$$"
 mkdir -p "$DUMP_TMPDIR"
 cleanup() { rm -rf "$DUMP_TMPDIR"; }
 trap cleanup EXIT
-
-OUTPUT="${PREFIX}.dump.gz"
 
 info "SEXmer-dump starting"
 info "Parameters : kmer-size=${KMER_SIZE}, min-count=${MIN_COUNT}, threads=${THREADS}"

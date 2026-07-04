@@ -9,6 +9,7 @@ export LC_ALL=C
 KMER_SIZE=21
 THREADS=8
 TMPDIR_BASE="$(pwd)"
+OUTDIR="."
 OUTPUT_PREFIX="sexmer"
 MARKERS=""
 UNKNOWN_INPUT=""
@@ -22,7 +23,7 @@ warn()    { echo "[Warning] $*" >&2; }
 error()   { echo "[Error] $*"  >&2; }
 
 usage() {
-    cat >&2 <<EOF
+    cat <<EOF
 
 SEXmer-assign.sh - Assign sex from unknown samples using sex-specific marker k-mers.
 
@@ -40,14 +41,14 @@ Optional:
                         [default: derived from dump filename by removing .dump.gz/.dump]
   -k, --kmer-size       K-mer size used for marker parsing             [default: ${KMER_SIZE}]
   -t, --threads         Number of samples processed in parallel        [default: ${THREADS}]
+  -o, --outdir         Output directory                                [default: current dir]
   --tmpdir              Parent directory for temporary work folder     [default: current dir]
   -h, --help            Show this help and exit
 
 EOF
-    exit 1
 }
 
-[[ $# -eq 0 ]] && usage
+[[ $# -eq 0 ]] && { usage >&2; exit 1; }
 
 POSITIONAL=()
 while [[ $# -gt 0 ]]; do
@@ -57,20 +58,21 @@ while [[ $# -gt 0 ]]; do
         --type)            TYPE="$2";          shift 2 ;;
         -k|--kmer-size)    KMER_SIZE="$2";     shift 2 ;;
         -t|--threads)      THREADS="$2";       shift 2 ;;
+        -o|--outdir)       OUTDIR="$2";        shift 2 ;;
         --tmpdir)          TMPDIR_BASE="$2";   shift 2 ;;
-        -h|--help)         usage ;;
-        -*) error "Unknown option '$1'"; usage ;;
+        -h|--help)         usage; exit 0 ;;
+        -*) error "Unknown option '$1'"; usage >&2; exit 1 ;;
         *)  POSITIONAL+=("$1"); shift ;;
     esac
 done
 
 [[ ${#POSITIONAL[@]} -eq 1 ]] || {
-    error "Exactly one positional argument is required: <markers.fa>."; usage; }
+    error "Exactly one positional argument is required: <markers.fa>."; usage >&2; exit 1; }
 
 MARKERS="${POSITIONAL[0]}"
 
-[[ -z "$UNKNOWN_INPUT" ]] && { error "-i/--input files not specified."; usage; }
-[[ -z "$TYPE" ]]          && { error "--type not specified."; usage; }
+[[ -z "$UNKNOWN_INPUT" ]] && { error "-i/--input files not specified."; usage >&2; exit 1; }
+[[ -z "$TYPE" ]]          && { error "--type not specified."; usage >&2; exit 1; }
 
 [[ -r "$MARKERS" ]] || { error "Cannot read marker FASTA file: $MARKERS"; exit 1; }
 
@@ -88,6 +90,10 @@ esac
 
 [[ -d "$TMPDIR_BASE" ]] || { error "Temporary parent directory does not exist: $TMPDIR_BASE"; exit 1; }
 [[ -w "$TMPDIR_BASE" ]] || { error "Temporary parent directory is not writable: $TMPDIR_BASE"; exit 1; }
+
+mkdir -p "$OUTDIR" || { error "Cannot create output directory: ${OUTDIR}"; exit 1; }
+[[ -d "$OUTDIR" ]] || { error "Output path is not a directory: ${OUTDIR}"; exit 1; }
+[[ -w "$OUTDIR" ]] || { error "Output directory is not writable: ${OUTDIR}"; exit 1; }
 
 for bin in gzip python3; do
     command -v "$bin" &>/dev/null || { error "'${bin}' not found on PATH."; exit 1; }
@@ -161,7 +167,7 @@ for i in "${!UNKNOWN_FILES[@]}"; do
     printf '%s\t%s\n' "${UNKNOWN_SAMPLES[$i]}" "${UNKNOWN_FILES[$i]}" >> "$SAMPLE_TABLE"
 done
 
-REPORT_OUT="${OUTPUT_PREFIX}.assign.txt"
+REPORT_OUT="${OUTDIR%/}/${OUTPUT_PREFIX}.assign.txt"
 ENGINE="${ASSIGN_TMPDIR}/sexmer_assign_engine.py"
 
 info "SEXmer-assign starting"

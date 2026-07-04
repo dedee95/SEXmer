@@ -11,6 +11,7 @@ WINDOW=10000
 STEP=2500
 THREADS=8
 PREFIX=""
+OUTDIR="."
 TMPDIR_BASE="$(pwd)"
 GENOME=""
 MARKERS=""
@@ -24,7 +25,7 @@ warn()    { echo "[Warning] $*" >&2; }
 error()   { echo "[Error] $*"  >&2; }
 
 usage() {
-    cat >&2 <<EOF
+    cat <<EOF
 
 SEXmer-map.sh - Map SEXmer marker k-mers and optional extracted reads to reference genome.
 
@@ -43,14 +44,14 @@ Optionals:
                        Examples: -r reads.fq.gz OR -r reads_1.fq.gz,reads_2.fq.gz
   --seq-type           Read type: short or long                        [default: ${SEQ_TYPE}]
   -t, --threads        CPU threads                                     [default: ${THREADS}]
+  -o, --outdir        Output directory                                [default: current dir]
   --tmpdir             Parent directory for temporary work folder      [default: current dir]
   -h, --help           Show this help and exit
 
 EOF
-    exit 1
 }
 
-[[ $# -eq 0 ]] && usage
+[[ $# -eq 0 ]] && { usage >&2; exit 1; }
 
 POSITIONAL=()
 while [[ $# -gt 0 ]]; do
@@ -62,20 +63,21 @@ while [[ $# -gt 0 ]]; do
         -r|--reads)        READS_INPUT="$2"; shift 2 ;;
         --seq-type)        SEQ_TYPE="$2";    shift 2 ;;
         -t|--threads)      THREADS="$2";     shift 2 ;;
+        -o|--outdir)       OUTDIR="$2";      shift 2 ;;
         --tmpdir)          TMPDIR_BASE="$2"; shift 2 ;;
-        -h|--help)         usage ;;
-        -*) error "Unknown option '$1'"; usage ;;
+        -h|--help)         usage; exit 0 ;;
+        -*) error "Unknown option '$1'"; usage >&2; exit 1 ;;
         *)  POSITIONAL+=("$1"); shift ;;
     esac
 done
 
 [[ ${#POSITIONAL[@]} -eq 2 ]] || {
-    error "Exactly two positional arguments are required: <genome.fa> <markers.fa>."; usage; }
+    error "Exactly two positional arguments are required: <genome.fa> <markers.fa>."; usage >&2; exit 1; }
 
 GENOME="${POSITIONAL[0]}"
 MARKERS="${POSITIONAL[1]}"
 
-[[ -z "$PREFIX" ]] && { error "--prefix is required."; usage; }
+[[ -z "$PREFIX" ]] && { error "--prefix is required."; usage >&2; exit 1; }
 
 [[ -r "$GENOME" ]] || { error "Cannot read genome FASTA file: $GENOME"; exit 1; }
 [[ -r "$MARKERS" ]] || { error "Cannot read marker FASTA file: $MARKERS"; exit 1; }
@@ -109,9 +111,14 @@ esac
 [[ -d "$TMPDIR_BASE" ]] || { error "Temporary parent directory does not exist: ${TMPDIR_BASE}"; exit 1; }
 [[ -w "$TMPDIR_BASE" ]] || { error "Temporary parent directory is not writable: ${TMPDIR_BASE}"; exit 1; }
 
+mkdir -p "$OUTDIR" || { error "Cannot create output directory: ${OUTDIR}"; exit 1; }
+[[ -d "$OUTDIR" ]] || { error "Output path is not a directory: ${OUTDIR}"; exit 1; }
+[[ -w "$OUTDIR" ]] || { error "Output directory is not writable: ${OUTDIR}"; exit 1; }
+if [[ "$OUTDIR" != "." ]]; then
+    PREFIX="${OUTDIR%/}/${PREFIX}"
+fi
 OUT_DIR="$(dirname "$PREFIX")"
-[[ "$OUT_DIR" == "." ]] && OUT_DIR="$(pwd)"
-[[ -d "$OUT_DIR" ]] || { error "Output directory does not exist: ${OUT_DIR}"; exit 1; }
+mkdir -p "$OUT_DIR" || { error "Cannot create output directory: ${OUT_DIR}"; exit 1; }
 [[ -w "$OUT_DIR" ]] || { error "Output directory is not writable: ${OUT_DIR}"; exit 1; }
 
 command -v python3 &>/dev/null || { error "python3 not found on PATH."; exit 1; }
