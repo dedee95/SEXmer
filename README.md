@@ -33,6 +33,40 @@ SEXmer command line tool currently only available for Linux. SEXmer is implement
 - [KMC](https://github.com/refresh-bio/KMC) (tested on 3.2.4)
 - [BBMAP](https://bbmap.org/) (tested on 39.81)
 
+All of these dependencies can easily be installed using conda.
+```bash
+#create the environment with it depedencies
+conda create -n sexmer -c conda-forge -c bioconda python=3.10 kmc bbmap numpy pandas matplotlib scipy
+
+#activate the environment
+conda activate sexmer
+```
+
+**Instalation**
+
+Currently, `SEXmer` only supports manual installation. Clone the repository or download a specific released package.
+```bash
+git clone https://github.com/dedee95/SEXmer.git
+cd SEXmer
+chmod -R 755 bin/
+export PATH="$PWD/bin:$PATH"
+```
+
 ## Quick Usage Guide
+After all dependencies are installed, type `SEXmer -h` to verify installation.
+```bash
+SEXmer: Resource-efficient toolkit for sex determination region analysis based on k-mers
+
+Usage: SEXmer <module> <parameters>
+
+Modules:
+dump        Generate filtered canonical k-mer dump files.
+scan        Identify sex-specific and sex-biased k-mers.
+reads       Extract reads containing sex-specific k-mers.
+map         Map sex-specific k-mers or sex-specific reads.
+assign      Assign sex using validated sex-specific markers.
+
+Use <module> -h for module usage.
+```
 
 ## SEXmer Detail Algoritm
