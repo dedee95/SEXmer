@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SEXmer-reads.sh - Extract specific reads based on specific kmer sequence.
+# SEXmer reads - Extract specific reads based on specific kmer sequence.
 # Author: Dede Kurniawan
 
 set -euo pipefail
@@ -26,9 +26,9 @@ error()   { echo "[Error] $*"   >&2; }
 usage() {
     cat <<EOF_USAGE
 
-SEXmer-reads.sh - Extract specific reads based on specific kmer sequence.
+SEXmer reads - Extract specific reads based on specific kmer sequence.
 
-Usage: SEXmer-reads.sh <markers.fa> -r <reads> --prefix <prefix> [OPTIONS]
+Usage: SEXmer reads <markers.fa> -r <reads> --prefix <prefix> [OPTIONS]
 
 Mandatory:
   <markers.fa>         Marker k-mer FASTA, e.g. MSK.fa or FSK.fa (.gz accepted)
@@ -298,7 +298,7 @@ run_bbduk_logged() {
     done < "$log_file"
 }
 
-info "SEXmer-reads starting"
+info "SEXmer reads starting"
 info "Parameters : kmer-size=${KMER_SIZE}, hit=${MIN_HIT}, threads=${THREADS}"
 info "Marker file: ${MARKERS}"
 info "Input reads: ${READS[*]}"
@@ -385,7 +385,7 @@ if [[ "$MODE" == "paired" ]]; then
 
     output "R1 reads written to: ${OUT1}"
     output "R2 reads written to: ${OUT2}"
-    info "SEXmer-reads complete."
+    info "SEXmer reads complete."
     info "  Mode     : paired-end"
     info "  Output R1: ${OUT1}"
     info "  Output R2: ${OUT2}"
@@ -396,13 +396,13 @@ else
         info "  Filename pair pattern: ${FILENAME_PAIR}"
         info "  Header ID agreement  : ${HEADER_SAME}/${HEADER_TOTAL} sampled records"
         error "Two input files were provided but did not look like a paired-end R1/R2 set."
-        error "For long-read or unpaired mode, provide only one FASTQ file per SEXmer-reads run."
+        error "For long-read or unpaired mode, provide only one FASTQ file per SEXmer reads run."
         exit 1
     fi
 
     if [[ ${#READS[@]} -gt 1 ]]; then
-        error "Multiple unpaired/long-read files are not supported in one SEXmer-reads run."
-        error "Please run SEXmer-reads separately for each long-read FASTQ file."
+        error "Multiple unpaired/long-read files are not supported in one SEXmer reads run."
+        error "Please run SEXmer reads separately for each long-read FASTQ file."
         exit 1
     fi
 
@@ -429,7 +429,7 @@ else
     [[ -f "$OUT" ]] || { error "Expected output file was not created: ${OUT}"; exit 1; }
 
     output "Reads written to: ${OUT}"
-    info "SEXmer-reads complete."
+    info "SEXmer reads complete."
     info "  Mode  : single/long-read"
     info "  Output: ${OUT}"
 fi

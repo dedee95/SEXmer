@@ -30,7 +30,7 @@ SEXmer assign - Assign sex from unknown samples using sex-specific marker k-mers
 Usage: SEXmer assign <markers.fa> -i <dump_files> --type <XY|ZW> [OPTIONS]
 
 Mandatory:
-  <markers.fa>          SEXmer marker FASTA from SEXmer-scan.
+  <markers.fa>          SEXmer marker FASTA from SEXmer scan.
                         For XY systems, provide MSK marker FASTA.
                         For ZW systems, provide FSK marker FASTA.
   -i, --input           Comma-separated list of unknown SEXmer dump files (.dump or .dump.gz)

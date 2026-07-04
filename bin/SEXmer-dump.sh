@@ -114,7 +114,7 @@ mkdir -p "$DUMP_TMPDIR"
 cleanup() { rm -rf "$DUMP_TMPDIR"; }
 trap cleanup EXIT
 
-info "SEXmer-dump starting"
+info "SEXmer dump starting"
 info "Parameters : kmer-size=${KMER_SIZE}, min-count=${MIN_COUNT}, threads=${THREADS}"
 info "Trigger-seq: ${TRIGGER_SEQ:-off}"
 info "Input reads: ${READS[*]}"
@@ -188,7 +188,7 @@ gzip -1 -c "$FINAL_DUMP" > "$OUTPUT"
 
 output "Dump file written to: ${OUTPUT}"
 
-info "SEXmer-dump complete."
+info "SEXmer dump complete."
 info "  Output     : ${OUTPUT}"
 info "  K-mer size : ${KMER_SIZE}"
 info "  Min count  : ${MIN_COUNT}"
