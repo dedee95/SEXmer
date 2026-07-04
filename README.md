@@ -82,7 +82,7 @@ It's recommended to use at least 8 samples from both sexes for a better result. 
 
 
 ### SEXmer reads
-Extract specific reads based on kmer sequence (MSK or FSK), output from SEXmer scan. Make sure the kmer sequence used in this module is generated from the SEXmer scan.
+Extract specific reads based on kmer sequence (MSK or FSK), output from `SEXmer scan`. Make sure the kmer sequence used in this module is generated from the `SEXmer scan`.
 
 Input reads can be WGS paired short reads or long reads (ONT, Cyclone, or PacBio). For long reads, it's recommended to set `--hit` to more than 1 to get truly specific reads. If long noisy reads are used, it's recommended to polish the reads first; if not, it's also fine.
 
