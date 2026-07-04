@@ -2,7 +2,7 @@
 ![Python Version](https://img.shields.io/badge/python-3.8+-blue.svg)
 ![MIT license](https://img.shields.io/badge/License-MIT-Blue.svg)
 
-<img src="docs/SEXmer-logo.png" alt="SEXmer logo" width="300">
+<img src="docs/SEXmer-logo.png" alt="SEXmer logo" width="350">
 
 Identifying the sex determination region (SDR) in some plants or animals requires huge effort, especially for XY and ZW sex types. To detect SDR robustly, we generally need population samples for both male and female individuals. This study often produces large whole-genome sequencing (WGS) data. K-mer-based method is a powerful strategy for detecting the sex determination region. However, processing population-scale kmer data requires huge computational resources.
 
@@ -142,7 +142,7 @@ Output files should be as follows:
 <prefix>.MSK.fa           | MSK sequence in FASTA file, extracted from the .tsv file.
 <prefix>.FSK.fa           | FSK sequence in FASTA file, extracted from the .tsv file.
 <prefix>.sexplot.png      | Scatter plot for MSK, FSK, MBK, FBK, and neutral in left panel; Bar plot for FSK and MSK in right panel.
-<prefix>.abundance.png    | Abundance plot for MSK, FSK, MBK, FBK, and neutral. This is usefull to see the abundance position of MSK or FSK.
+<prefix>.abundance.png    | Abundance plot for MSK, FSK, MBK, FBK, and neutral. This is useful to see the abundance position of MSK or FSK.
 ```
 An example of `<prefix>.sexplot.png`:
 
@@ -157,12 +157,85 @@ Extract specific reads based on kmer sequence (MSK or FSK), output from `SEXmer 
 
 Input reads can be WGS paired short reads or long reads (ONT, Cyclone, or PacBio). For long reads, it's recommended to set `--hit` to more than 1 to get truly specific reads. If long noisy reads are used, it's recommended to polish the reads first; if not, it's also fine.
 
+```
+SEXmer reads - Extract specific reads based on k-mer sequence (MSK or FSK).
+
+Usage: SEXmer reads <markers.fa> -r <reads> --prefix <prefix> [OPTIONS]
+
+Mandatory:
+  <markers.fa>         Sex specific kmer sequence, e.g. MSK.fa (.gz accepted)
+  -r, --reads          Raw WGS short reads or long reads (separated by commas)
+                       Example: -r reads_1.fq.gz,reads_2.fq.gz or 
+                                -r long_reads.fq.gz
+  --prefix             The prefix used on generated files
+
+Optional:
+  --hit                Specify minimum k-mer hits per reads            [default: ${MIN_HIT}]
+  -k, --kmer-size      Specify k-mer sized based on sex specific kmer  [default: ${KMER_SIZE}]
+  -t, --threads        Specify CPU threads for this task               [default: ${THREADS}]
+  -o, --outdir         Specify output directory name                   [default: current dir]
+  --tmpdir             Specify parent directory for the temp files     [default: current dir]
+  --bbduk-bin          Specify path containing bbduk.sh                [default: PATH]
+  -h, --help           Show this help message and exit
+```
+
+Output files should be as follows:
+```
+# If WGS short paired end are given
+<prefix>.sexmer_1.fq.gz   | Extracted WGS short reads based on the given kmer sequence (forward strand).
+<prefix>.sexmer_2.fq.gz   | Extracted WGS short reads based on the given kmer sequence (reverse strand).
+
+# If WGS long reads is given
+<prefix>.sexmer.fq.gz     | Extracted WGS long reads based on the given kmer sequence.
+```
 
 ### SEXmer map
 Map the specific kmer sequence into the genome reference and generate kmer hits along the window and step size. The main purpose of this module is to perform kmer enrichment across a reference genome, then identify it as SDR. This module also facilitates mapping the extracted reads into the genome and generating depth information. Moreover, this module generates a Manhattan plot to see the SDR signal location.
 
 If the sex type is XY, it is recommended to use the MSK sequence for mapping into the genome reference. For ZW sex type, use the FSK sequence. Extracted sex specific WGS short reads and long reads can be used as well. Based on our experience, extracted sex specific reads with very low depth are enough to just locate the SDR signal.
 
+```
+SEXmer map - Map specific k-mer sequence or reads into the genome reference.
+
+Usage: SEXmer map <genome.fa> <markers.fa> --prefix <prefix> [OPTIONS]
+
+Mandatory:
+  <genome.fa>          Specify reference genome in FASTA file (.gz is accepted)
+  <markers.fa>         Specify sex specific k-mer sequence, e.g. MSK.fa (.gz is accepted)
+  --prefix             The prefix used on generated files
+
+Optional:
+  -k, --kmer-size      Specify k-mer size (1-63)                       [default: ${KMER_SIZE}]
+  -w, --window         Specify window size in bp                       [default: ${WINDOW}]
+  -s, --step           Specify sliding step size in bp                 [default: ${STEP}]
+  -r, --reads          Input extracted raw reads from SEXmer reads (comma-separated)
+                       Examples: -r reads.fq.gz OR -r reads_1.fq.gz,reads_2.fq.gz
+  --seq-type           Specify reads type: short or long               [default: ${SEQ_TYPE}]
+  -t, --threads        Specify CPU threads for this task               [default: ${THREADS}]
+  -o, --outdir         Specify output directory name                   [default: current dir]
+  --tmpdir             Specify parent directory for the temp files     [default: current dir]
+  -h, --help           Show this help message and exit
+```
+
+Output files should be as follows:
+```
+<prefix>.kmer.manhattan.svg   | Manhattan style plot. Y axes represent kmer hits and X axes represent chromosome region.
+<prefix>.kmer.windows.tsv     | A .tsv file that contain several information, including chr, start, end, hits, and hits_per_10kb.
+```
+
+Output files if `-r` or `--reads` are specified:
+```
+<prefix>.reads.manhattan.svg   | Manhattan style plot. Y axes represent reads depth and X axes represent chromosome region.
+<prefix>.reads.windows.tsv     | A .tsv file that contain several information, chr, start, end, and depth.
+```
+
+An example of `<prefix>.kmer.manhattan.svg`:
+
+<img src="docs/Cycas.kmer.manhattan.png" alt="An example of kmer hits on manhattan style plot" width="700">
+
+An example of `<prefix>.reads.manhattan.svg`:
+
+<img src="docs/Cycas.reads.manhattan.png" alt="An example of kmer hits on manhattan style plot" width="700">
 
 ### SEXmer assign
 Assign sex from unknown samples using sex-specific kmer (MSK or FSK) from `SEXmer scan`. SEXmer assigns a sex-specific kmer present ratio to classify an unknown sample into male or female. The quality of the assignment heavily depends on the quality and transferability of the sex-specific kmer. In the future, we will implement our self-developed algorithm,  "*SEXmer iterative classifier (SIC)*", for a more robust classification. 
