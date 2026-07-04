@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SEXmer map - Map specific kmer sequence or reads into the genome reference.
+# SEXmer map - Map specific k-mer sequence or reads into the genome reference.
 # Author: Dede Kurniawan
 
 set -euo pipefail
@@ -27,7 +27,7 @@ error()   { echo "[Error] $*"  >&2; }
 usage() {
     cat <<EOF
 
-SEXmer map - Map specific kmer sequence or reads into the genome reference.
+SEXmer map - Map specific k-mer sequence or reads into the genome reference.
 
 Usage: SEXmer map <genome.fa> <markers.fa> --prefix <prefix> [OPTIONS]
 
@@ -36,7 +36,7 @@ Mandatory:
   <markers.fa>         Specify sex specific k-mer sequence, e.g. MSK.fa (.gz is accepted)
   --prefix             The prefix used on generated files
 
-Optionals:
+Optional:
   -k, --kmer-size      Specify k-mer size (1-63)                       [default: ${KMER_SIZE}]
   -w, --window         Specify window size in bp                       [default: ${WINDOW}]
   -s, --step           Specify sliding step size in bp                 [default: ${STEP}]

@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# SEXmer dump - Generate and filter a kmer dump sequence from raw WGS reads.
+# SEXmer dump - Generate and filter a k-mer dump sequence from raw WGS reads.
 # Author: Dede Kurniawan
 
 set -euo pipefail
 export LC_ALL=C
 
-KMER_SIZE=21
+-_SIZE=21
 MIN_COUNT=3
 TRIGGER_SEQ=""
 THREADS=4
@@ -23,7 +23,7 @@ error()   { echo "[Error] $*"   >&2; }
 usage() {
     cat <<EOF
 
-SEXmer dump - Generate and filter a kmer dump sequence from raw WGS reads.
+SEXmer dump - Generate and filter a k-mer dump sequence from raw WGS reads.
 
 Usage: SEXmer dump --prefix <sample> <reads_1.fq.gz> [reads_2.fq.gz] [OPTIONS]
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SEXmer assign - Assign sex from unknown samples using sex-specific marker k-mers.
+# SEXmer assign - Assign sex from unknown samples using sex-specific k-mer (MSK or FSK).
 # Author: Dede Kurniawan
 
 set -euo pipefail
@@ -25,25 +25,25 @@ error()   { echo "[Error] $*"  >&2; }
 usage() {
     cat <<EOF
 
-SEXmer assign - Assign sex from unknown samples using sex-specific marker k-mers.
+SEXmer assign - Assign sex from unknown samples using sex-specific k-mer (MSK or FSK).
 
 Usage: SEXmer assign <markers.fa> -i <dump_files> --type <XY|ZW> [OPTIONS]
 
 Mandatory:
-  <markers.fa>          SEXmer marker FASTA from SEXmer scan.
-                        For XY systems, provide MSK marker FASTA.
-                        For ZW systems, provide FSK marker FASTA.
-  -i, --input           Comma-separated list of unknown SEXmer dump files (.dump or .dump.gz)
-  --type                Sex chromosome system: XY or ZW
+  <markers.fa>          Sex specific k-mer sequence, e.g. MSK.fa(.gz accepted)
+                        For XY systems, provide MSK.
+                        For ZW systems, provide FSK.
+  -i, --input           K-mer dump file from unknown sample, separated by commas (.dump or .dump.gz)
+  --type                Specify sex chromosome system: XY or ZW
 
 Optional:
-  -s, --sample          Comma-separated list of sample names
+  -s, --sample          Specify each sample names, separated by commas. 
                         [default: derived from dump filename by removing .dump.gz/.dump]
-  -k, --kmer-size       K-mer size used for marker parsing             [default: ${KMER_SIZE}]
-  -t, --threads         Number of samples processed in parallel        [default: ${THREADS}]
-  -o, --outdir          Output directory                               [default: current dir]
-  --tmpdir              Parent directory for temporary work folder     [default: current dir]
-  -h, --help            Show this help and exit
+  -k, --kmer-size       Specify k-mer size used for marker parsing     [default: ${KMER_SIZE}]
+  -t, --threads         Specify CPU threads for this task              [default: ${THREADS}]
+  -o, --outdir          Specify output directory name                  [default: current dir]
+  --tmpdir              Specify parent directory for the temp files    [default: current dir]
+  -h, --help            Show this help message and exit
 
 EOF
 }

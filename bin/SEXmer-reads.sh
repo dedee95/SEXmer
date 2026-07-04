@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SEXmer reads - Extract specific reads based on kmer sequence (MSK or FSK).
+# SEXmer reads - Extract specific reads based on k-mer sequence (MSK or FSK).
 # Author: Dede Kurniawan
 
 set -euo pipefail
@@ -26,7 +26,7 @@ error()   { echo "[Error] $*"   >&2; }
 usage() {
     cat <<EOF_USAGE
 
-SEXmer reads - Extract specific reads based on kmer sequence (MSK or FSK).
+SEXmer reads - Extract specific reads based on k-mer sequence (MSK or FSK).
 
 Usage: SEXmer reads <markers.fa> -r <reads> --prefix <prefix> [OPTIONS]
 
@@ -37,7 +37,7 @@ Mandatory:
                                 -r long_reads.fq.gz
   --prefix             The prefix used on generated files
 
-Optionals:
+Optional:
   --hit                Specify minimum k-mer hits per reads            [default: ${MIN_HIT}]
   -k, --kmer-size      Specify k-mer sized based on sex specific kmer  [default: ${KMER_SIZE}]
   -t, --threads        Specify CPU threads for this task               [default: ${THREADS}]

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SEXmer scan - Scan all kmer sequences and classify them as MSK, FSK, MBK, FBK, or neutral.
+# SEXmer scan - Scan all k-mer sequences and classify them as MSK, FSK, MBK, FBK, or neutral.
 # Author: Dede Kurniawan 
 
 set -euo pipefail
@@ -29,7 +29,7 @@ error()   { echo "[Error] $*"  >&2; }
 usage() {
     cat <<EOF
 
-SEXmer scan - Scan all kmer sequences and classify them as MSK, FSK, MBK, FBK, or neutral.
+SEXmer scan - Scan all k-mer sequences and classify them as MSK, FSK, MBK, FBK, or neutral.
 
 Usage: SEXmer scan -m <male_files> -f <female_files> [OPTIONS]
 
@@ -51,6 +51,13 @@ Optional:
   --no-plot            Do not generate any visualization
   --plot-format        Specify plot format: svg, png, or pdf           [default: ${PLOT_FORMAT}]
   -h, --help           Show this help message and exit
+
+Categories:
+  MSK      Male-specific k-mer
+  FSK      Female-specific k-mer
+  MBK      Male-biased k-mer
+  FBK      Female-biased k-mer
+  neutral  K-mer without sex-specific or sex-biased signal
 
 EOF
 }
