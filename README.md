@@ -13,11 +13,11 @@ Here we present `SEXmer`, a fast and resource-efficient command-line tool for se
 Currently, SEXmer contain 5 modules:
 
 ```bash
-dump      Generate filtered canonical k-mer dump files.
-scan      Identify sex-specific and sex-biased k-mers.
-reads     Extract reads containing sex-specific k-mers.
-map       Map sex-specific k-mers or sex-specific reads.
-assign    Assign sex using validated sex-specific markers.
+dump    Generate filtered canonical k-mer dump files.
+scan    Identify sex-specific and sex-biased k-mers.
+reads   Extract reads containing sex-specific k-mers.
+map     Map sex-specific k-mers or sex-specific reads.
+assign  Assign sex using validated sex-specific markers.
 ```
 
 ## Table of Contents
