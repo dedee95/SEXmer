@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SEXmer reads - Extract specific reads based on specific kmer sequence.
+# SEXmer reads - Extract specific reads based on kmer sequence (MSK or FSK).
 # Author: Dede Kurniawan
 
 set -euo pipefail
@@ -26,25 +26,25 @@ error()   { echo "[Error] $*"   >&2; }
 usage() {
     cat <<EOF_USAGE
 
-SEXmer reads - Extract specific reads based on specific kmer sequence.
+SEXmer reads - Extract specific reads based on kmer sequence (MSK or FSK).
 
 Usage: SEXmer reads <markers.fa> -r <reads> --prefix <prefix> [OPTIONS]
 
 Mandatory:
-  <markers.fa>         Marker k-mer FASTA, e.g. MSK.fa or FSK.fa (.gz accepted)
-  -r, --reads          Comma-separated FASTQ file(s)
+  <markers.fa>         Sex specific kmer sequence, e.g. MSK.fa (.gz accepted)
+  -r, --reads          Raw WGS short reads or long reads (separated by commas)
                        Example: -r reads_1.fq.gz,reads_2.fq.gz or 
                                 -r long_reads.fq.gz
-  --prefix             Output filename prefix
+  --prefix             The prefix used on generated files
 
 Optionals:
-  --hit                Minimum exact marker k-mer hits per read        [default: ${MIN_HIT}]
-  -k, --kmer-size      K-mer size used by BBDuk (1-63)                 [default: ${KMER_SIZE}]
-  -t, --threads        CPU threads                                     [default: ${THREADS}]
-  -o, --outdir         Output directory                                [default: current dir]
-  --tmpdir             Parent directory for temporary work folder      [default: current dir]
-  --bbduk-bin          Directory containing bbduk.sh                   [default: PATH]
-  -h, --help           Show this help and exit
+  --hit                Specify minimum k-mer hits per reads            [default: ${MIN_HIT}]
+  -k, --kmer-size      Specify k-mer sized based on sex specific kmer  [default: ${KMER_SIZE}]
+  -t, --threads        Specify CPU threads for this task               [default: ${THREADS}]
+  -o, --outdir         Specify output directory name                   [default: current dir]
+  --tmpdir             Specify parent directory for the temp files     [default: current dir]
+  --bbduk-bin          Specify path containing bbduk.sh                [default: PATH]
+  -h, --help           Show this help message and exit
 
 EOF_USAGE
 }

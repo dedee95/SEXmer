@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SEXmer map - Map SEXmer marker k-mers and optional extracted reads to reference genome.
+# SEXmer map - Map specific kmer sequence or reads into the genome reference.
 # Author: Dede Kurniawan
 
 set -euo pipefail
@@ -27,26 +27,26 @@ error()   { echo "[Error] $*"  >&2; }
 usage() {
     cat <<EOF
 
-SEXmer map - Map SEXmer marker k-mers and optional extracted reads to reference genome.
+SEXmer map - Map specific kmer sequence or reads into the genome reference.
 
 Usage: SEXmer map <genome.fa> <markers.fa> --prefix <prefix> [OPTIONS]
 
 Mandatory:
-  <genome.fa>          Reference genome FASTA (.fa, .fasta, optionally .gz)
-  <markers.fa>         Marker k-mer FASTA, e.g. MSK.fa or FSK.fa (.gz accepted)
-  --prefix             Output filename prefix
+  <genome.fa>          Specify reference genome in FASTA file (.gz is accepted)
+  <markers.fa>         Specify sex specific k-mer sequence, e.g. MSK.fa (.gz is accepted)
+  --prefix             The prefix used on generated files
 
 Optionals:
-  -k, --kmer-size      K-mer size (1-63)                               [default: ${KMER_SIZE}]
-  -w, --window         Window size in bp                               [default: ${WINDOW}]
-  -s, --step           Sliding step size in bp                         [default: ${STEP}]
-  -r, --reads          Comma-separated raw reads FASTQ file(s)
+  -k, --kmer-size      Specify k-mer size (1-63)                       [default: ${KMER_SIZE}]
+  -w, --window         Specify window size in bp                       [default: ${WINDOW}]
+  -s, --step           Specify sliding step size in bp                 [default: ${STEP}]
+  -r, --reads          Input extracted raw reads from SEXmer reads (comma-separated)
                        Examples: -r reads.fq.gz OR -r reads_1.fq.gz,reads_2.fq.gz
-  --seq-type           Read type: short or long                        [default: ${SEQ_TYPE}]
-  -t, --threads        CPU threads                                     [default: ${THREADS}]
-  -o, --outdir         Output directory                                [default: current dir]
-  --tmpdir             Parent directory for temporary work folder      [default: current dir]
-  -h, --help           Show this help and exit
+  --seq-type           Specify reads type: short or long               [default: ${SEQ_TYPE}]
+  -t, --threads        Specify CPU threads for this task               [default: ${THREADS}]
+  -o, --outdir         Specify output directory name                   [default: current dir]
+  --tmpdir             Specify parent directory for the temp files     [default: current dir]
+  -h, --help           Show this help message and exit
 
 EOF
 }
