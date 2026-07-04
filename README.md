@@ -1,4 +1,4 @@
-# SEXmer: Fast and Resource Efficient Sex Determination Analysis Using Kmer
+# SEXmer: Fast and resource efficient sex determination analysis using kmer
 ![Python Version](https://img.shields.io/badge/python-3.8+-blue.svg)
 ![MIT license](https://img.shields.io/badge/License-MIT-Blue.svg)
 
@@ -231,16 +231,49 @@ Output files if `-r` or `--reads` are specified:
 
 An example of `<prefix>.kmer.manhattan.svg`:
 
-<img src="docs/Cycas.kmer.manhattan.png" alt="An example of kmer hits on manhattan style plot" width="700">
+![An example of kmer hits on manhattan style plot](docs/Cycas.kmer.manhattan.png)
 
 An example of `<prefix>.reads.manhattan.svg`:
 
-<img src="docs/Cycas.reads.manhattan.png" alt="An example of kmer hits on manhattan style plot" width="700">
+![n example of kmer hits on manhattan style plot](docs/Cycas.reads.manhattan.png)
 
 ### SEXmer assign
 Assign sex from unknown samples using sex-specific kmer (MSK or FSK) from `SEXmer scan`. SEXmer assigns a sex-specific kmer present ratio to classify an unknown sample into male or female. The quality of the assignment heavily depends on the quality and transferability of the sex-specific kmer. In the future, we will implement our self-developed algorithm,  "*SEXmer iterative classifier (SIC)*", for a more robust classification. 
 
 For XY sex type, use MSK as a sex-specific kmer marker and use FSK if the sex type is ZW. Input all of the unknown reads sample at once. If the original MSK or FSK set is weak or noisy, assignment performance may be poor. Only trust the result when it shows "**high confidence**".
 
+```
+SEXmer assign - Assign sex from unknown samples using sex-specific k-mer (MSK or FSK).
 
+Usage: SEXmer assign <markers.fa> -i <dump_files> --type <XY|ZW> [OPTIONS]
 
+Mandatory:
+  <markers.fa>          Sex specific k-mer sequence, e.g. MSK.fa(.gz accepted)
+                        For XY systems, provide MSK.
+                        For ZW systems, provide FSK.
+  -i, --input           K-mer dump file from unknown sample, separated by commas (.dump or .dump.gz)
+  --type                Specify sex chromosome system: XY or ZW
+
+Optional:
+  -s, --sample          Specify each sample names, separated by commas. 
+                        [default: derived from dump filename by removing .dump.gz/.dump]
+  -k, --kmer-size       Specify k-mer size used for marker parsing     [default: ${KMER_SIZE}]
+  -t, --threads         Specify CPU threads for this task              [default: ${THREADS}]
+  -o, --outdir          Specify output directory name                  [default: current dir]
+  --tmpdir              Specify parent directory for the temp files    [default: current dir]
+  -h, --help            Show this help message and exit
+```
+
+Output files should be as follows:
+```
+<prefix>.assign.txt   | Summary information about sex assignment result. Some important information including, sex type, largest gap, separation, sex-specific kmer ratio, confident, etc.
+```
+
+## Citation
+`SEXmer` has no prior publication yet. If you use this tool in your research, please cite the repository for now.
+> Kurniawan, D., Fang, W. & Tong, W. 2026. SEXmer: Fast and resource efficient sex determination analysis using kmer. https://github.com/dedee95/SEXmer
+
+## Contact information
+If you have any questions or suggestions regarding SEXmer, feel free to contact one of the contacts below.
+- Linkedin: [https://www.linkedin.com/in/dede-kurniawann/](https://www.linkedin.com/in/dede-kurniawann/)
+- E-mail: [dedekurniawan@genomics.cn](mailto:dedekurniawan@genomics.cn)
