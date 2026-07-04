@@ -9,3 +9,24 @@ Identifying the sex determination region (SDR) in some plants or animals require
 Here we present SEXmer, a fast and resource-efficient command-line tool for sex determination region analysis based on kmer. 
 
 > **"SEXmer provides a modular workflow from raw reads to sex-specific k-mer discovery, kmer based reads extraction, unknown sex classifier, and genomic localization of candidate SDR signals."**
+
+Currently, SEXmer contain 5 modules to facilitate sex determination region analysis using kmer.
+
+```bash
+./SEXmer -h
+
+SEXmer: Resource-efficient toolkit for sex determination region analysis based on k-mers
+
+Usage: SEXmer <module> <parameters>
+
+Modules:
+dump         Generate filtered canonical k-mer dump files.
+scan         Identify sex-specific and sex-biased k-mers.
+reads        Extract reads containing sex-specific k-mers.
+map          Map sex-specific k-mers or sex-specific reads.
+assign       Assign sex using validated sex-specific markers.
+
+Use <module> -h for module usage.
+```
+
+## Table of Contents
