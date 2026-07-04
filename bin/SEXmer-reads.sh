@@ -41,7 +41,7 @@ Optionals:
   --hit                Minimum exact marker k-mer hits per read        [default: ${MIN_HIT}]
   -k, --kmer-size      K-mer size used by BBDuk (1-63)                 [default: ${KMER_SIZE}]
   -t, --threads        CPU threads                                     [default: ${THREADS}]
-  -o, --outdir        Output directory                                [default: current dir]
+  -o, --outdir         Output directory                                [default: current dir]
   --tmpdir             Parent directory for temporary work folder      [default: current dir]
   --bbduk-bin          Directory containing bbduk.sh                   [default: PATH]
   -h, --help           Show this help and exit

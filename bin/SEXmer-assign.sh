@@ -37,7 +37,7 @@ Mandatory:
   --type                Sex chromosome system: XY or ZW
 
 Optional:
-  -s, --sample          Comma-separated list of sample names, same order as --input
+  -s, --sample          Comma-separated list of sample names
                         [default: derived from dump filename by removing .dump.gz/.dump]
   -k, --kmer-size       K-mer size used for marker parsing             [default: ${KMER_SIZE}]
   -t, --threads         Number of samples processed in parallel        [default: ${THREADS}]

@@ -40,11 +40,11 @@ Optionals:
   -k, --kmer-size      K-mer size (1-63)                               [default: ${KMER_SIZE}]
   -w, --window         Window size in bp                               [default: ${WINDOW}]
   -s, --step           Sliding step size in bp                         [default: ${STEP}]
-  -r, --reads          Comma-separated FASTQ file(s) for BBMap validation
+  -r, --reads          Comma-separated raw reads FASTQ file(s)
                        Examples: -r reads.fq.gz OR -r reads_1.fq.gz,reads_2.fq.gz
   --seq-type           Read type: short or long                        [default: ${SEQ_TYPE}]
   -t, --threads        CPU threads                                     [default: ${THREADS}]
-  -o, --outdir        Output directory                                [default: current dir]
+  -o, --outdir         Output directory                                [default: current dir]
   --tmpdir             Parent directory for temporary work folder      [default: current dir]
   -h, --help           Show this help and exit
 
