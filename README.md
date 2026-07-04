@@ -1,5 +1,5 @@
 # SEXmer: Fast and Resource Efficient Sex Determination Analysis Using Kmer
-![Python Version](https://img.shields.io/badge/python-3.9+-blue.svg)
+![Python Version](https://img.shields.io/badge/python-3.8+-blue.svg)
 ![MIT license](https://img.shields.io/badge/License-MIT-Blue.svg)
 
 <img src="docs/SEXmer-logo.png" alt="SEXmer logo" width="300">
@@ -20,4 +20,19 @@ map       Map sex-specific k-mers or sex-specific reads.
 assign    Assign sex using validated sex-specific markers.
 ```
 
-## Table of Contents
+## Getting Started
+SEXmer command line tool currently only available for Linux. SEXmer is implemented as a bash script, embedded with Python, and using some external dependencies.
+
+**Dependencies**
+- [Python3](https://www.python.org/) (>3.8, tested on 3.10)
+- Python library: 
+  - numpy >=1.26 
+  - pandas >=2.2
+  - matplotlib >=3.8
+  - scipy >=1.11
+- [KMC](https://github.com/refresh-bio/KMC) (tested on 3.2.4)
+- [BBMAP](https://bbmap.org/) (tested on 39.81)
+
+## Quick Usage Guide
+
+## SEXmer Detail Algoritm
