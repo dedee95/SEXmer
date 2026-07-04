@@ -10,7 +10,7 @@ Here we present SEXmer, a fast and resource-efficient command-line tool for sex 
 
 > **"SEXmer provides a modular workflow from raw reads to sex-specific k-mer discovery, kmer based reads extraction, unknown sex classifier, and genomic localization of candidate SDR signals."**
 
-Currently, SEXmer contain 5 modules to facilitate sex determination region analysis using kmer.
+Currently, SEXmer contain 5 modules:
 
 ```bash
 dump      Generate filtered canonical k-mer dump files.
