@@ -145,10 +145,12 @@ Output files should be as follows:
 <prefix>.abundance.png    | Abundance plot for MSK, FSK, MBK, FBK, and neutral. This is usefull to see the abundance position of MSK or FSK.
 ```
 An example of `<prefix>.sexplot.png`:
-<img src="docs/Cycas.sexplot.png" alt="An example of sexplot" width="450">
+
+<img src="docs/Cycas.sexplot.png" alt="An example of sexplot" width="500">
 
 An example of `<prefix>.abundance.png`:
-<img src="docs/Cycas.abundance.png" alt="An example of abundance plot" width="450">
+
+<img src="docs/Cycas.abundance.png" alt="An example of abundance plot" width="500">
 
 ### SEXmer reads
 Extract specific reads based on kmer sequence (MSK or FSK), output from `SEXmer scan`. Make sure the kmer sequence used in this module is generated from the `SEXmer scan`.
