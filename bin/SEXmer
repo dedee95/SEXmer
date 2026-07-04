@@ -19,7 +19,7 @@ reads      Extract reads containing sex-specific k-mers.
 map        Map sex-specific k-mers or sex-specific reads.
 assign     Assign sex using validated sex-specific markers.
 
-Use <module> -h for module usage.
+Use <module> -h for detailed module usage.
 
 EOF_HELP
 }
