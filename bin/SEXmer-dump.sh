@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SEXmer-dump.sh - Generate a filtered k-mer dump file for a single sample.
+# SEXmer dump - Generate a filtered k-mer dump file for a single sample.
 # Author: Dede Kurniawan
 
 set -euo pipefail
@@ -23,9 +23,9 @@ error()   { echo "[Error] $*"   >&2; }
 usage() {
     cat <<EOF
 
-SEXmer-dump.sh - Generate a filtered k-mer dump file for a single sample.
+SEXmer dump - Generate a filtered k-mer dump file for a single sample.
 
-Usage: SEXmer-dump.sh --prefix <sample> <reads_1.fq.gz> [reads_2.fq.gz] [OPTIONS]
+Usage: SEXmer dump --prefix <sample> <reads_1.fq.gz> [reads_2.fq.gz] [OPTIONS]
 
 Mandatory:
   --prefix             Output filename prefix (output: <prefix>.dump.gz)
