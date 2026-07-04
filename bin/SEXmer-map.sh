@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SEXmer-map.sh - Map SEXmer marker k-mers and optional extracted reads to reference genome.
+# SEXmer map - Map SEXmer marker k-mers and optional extracted reads to reference genome.
 # Author: Dede Kurniawan
 
 set -euo pipefail
@@ -27,9 +27,9 @@ error()   { echo "[Error] $*"  >&2; }
 usage() {
     cat <<EOF
 
-SEXmer-map.sh - Map SEXmer marker k-mers and optional extracted reads to reference genome.
+SEXmer map - Map SEXmer marker k-mers and optional extracted reads to reference genome.
 
-Usage: SEXmer-map.sh <genome.fa> <markers.fa> --prefix <prefix> [OPTIONS]
+Usage: SEXmer map <genome.fa> <markers.fa> --prefix <prefix> [OPTIONS]
 
 Mandatory:
   <genome.fa>          Reference genome FASTA (.fa, .fasta, optionally .gz)
@@ -720,7 +720,7 @@ def detect_input_type(df: pd.DataFrame) -> Tuple[str, str, str]:
         return "depth", "mean_depth", "depth"
 
     raise ValueError(
-        "Input must contain SEXmer-map columns: "
+        "Input must contain SEXmer map columns: "
         "chr/start/end/hits for k-mer output, or chr/start/end/depth for reads output."
     )
 
@@ -892,9 +892,9 @@ def default_output_stem(input_path: Path, input_type: str) -> str:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Create standard Manhattan plots for SEXmer-map.sh window TSV outputs."
+        description="Create standard Manhattan plots for SEXmer map window TSV outputs."
     )
-    parser.add_argument("inputs", nargs="+", help="SEXmer-map.sh TSV file(s)")
+    parser.add_argument("inputs", nargs="+", help="SEXmer map TSV file(s)")
     return parser.parse_args()
 
 def main() -> int:
@@ -942,7 +942,7 @@ chmod +x "$PLOTTER"
 KMER_OUT="${PREFIX}.kmer.windows.tsv"
 READS_OUT="${PREFIX}.reads.windows.tsv"
 
-info "SEXmer-map starting"
+info "SEXmer map starting"
 info "Parameters : kmer-size=${KMER_SIZE}, window=${WINDOW}, step=${STEP}"
 info "Settings   : threads=${THREADS}"
 info "Genome     : ${GENOME}"
@@ -1166,4 +1166,4 @@ PY
     output "Read Manhattan plot written to: ${READS_PLOT}"
 fi
 
-info "SEXmer-map complete."
+info "SEXmer map complete."
