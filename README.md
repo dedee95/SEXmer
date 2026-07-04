@@ -6,4 +6,6 @@
 
 Identifying the sex determination region (SDR) in some plants or animals requires huge effort, especially for XY and ZW sex types. To detect SDR robustly, we generally need population samples for both male and female individuals. This study often produces large whole-genome sequencing (WGS) data. K-mer-based method is a powerful strategy for detecting the sex determination region. However, processing population-scale kmer data requires huge computational resources.
 
-Here we present SEXmer, a fast and resource-efficient command-line tool for sex determination region analysis based on kmer. SEXmer provides a modular workflow from raw reads to sex-specific k-mer discovery, specific-read extraction, unknown sex classifier, and genomic localization of candidate SDR signals.
+Here we present SEXmer, a fast and resource-efficient command-line tool for sex determination region analysis based on kmer. 
+
+> **"SEXmer provides a modular workflow from raw reads to sex-specific k-mer discovery, kmer based reads extraction, unknown sex classifier, and genomic localization of candidate SDR signals."**
