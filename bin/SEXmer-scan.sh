@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SEXmer-scan.sh - K-mer sex-specificity classifier from KMC dump files.
+# SEXmer scan - K-mer sex-specificity classifier from KMC dump files.
 # Author: Dede Kurniawan 
 
 set -euo pipefail
@@ -29,9 +29,9 @@ error()   { echo "[Error] $*"  >&2; }
 usage() {
     cat <<EOF
 
-SEXmer-scan.sh - K-mer sex-specificity classifier from KMC dump files.
+SEXmer scan - K-mer sex-specificity classifier from KMC dump files.
 
-Usage: SEXmer-scan.sh -m <male_files> -f <female_files> [OPTIONS]
+Usage: SEXmer scan -m <male_files> -f <female_files> [OPTIONS]
 
 Mandatory:
   -m, --male           Comma-separated list of male dump files
@@ -412,7 +412,7 @@ PYPLOT
 fi
 
 # log run parameters
-info "SEXmer-scan starting"
+info "SEXmer scan starting"
 info "Parameters: min-count=${MIN_COUNT}, max-count=${MAX_COUNT}, fold-threshold=${FOLD_THRESHOLD}, neutral-max=${NEUTRAL_MAX}, seed=${SEED}"
 info "Settings  : mem=${MEM}, threads=${THREADS}"
 info "Plotting  : enabled=${PLOT_ENABLED}, format=${PLOT_FORMAT}"
