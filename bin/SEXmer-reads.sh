@@ -33,7 +33,7 @@ Mandatory:
   <markers.fa>         Marker k-mer FASTA, e.g. MSK.fa or FSK.fa (.gz accepted)
   -r, --reads          Comma-separated FASTQ file(s)
                        Example: -r reads_1.fq.gz,reads_2.fq.gz or 
-                                -r ont_1.fq.gz,ont_2.fq.gz,ont_3.fq.gz
+                                -r ont_reads.fq.gz
   --prefix             Output filename prefix
 
 Optionals:
