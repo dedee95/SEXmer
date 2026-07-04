@@ -21,7 +21,7 @@ assign    Assign sex using validated sex-specific markers.
 ```
 
 ## Getting Started
-SEXmer command line tool currently only available for Linux. SEXmer is implemented as a bash script, embedded with Python, and using some external dependencies.
+SEXmer command line tool currently only available for Linux (tested on Ubuntu and CentOS). SEXmer is implemented as a bash script, embedded with Python, and using some external dependencies.
 
 **Dependencies**
 - [Python3](https://www.python.org/) (>3.8, tested on 3.10)
@@ -55,7 +55,7 @@ export PATH="$PWD/bin:$PATH"
 ## Quick Usage Guide
 After all dependencies are installed, type `SEXmer -h` to verify installation.
 ```
-SEXmer: A resource-efficient toolkit for sex determination region analysis using k-mers
+SEXmer: A resource-efficient toolkit for sex determination region analysis using k-mers.
 
 Usage: SEXmer <module> [options]
 
@@ -74,12 +74,76 @@ Generate and filter a kmer dump sequence from raw WGS reads. This core module ba
 
 The input data can be either WGS short paired reads or long reads. If you have multiple samples, you need to run this module one by one. And it's truly recommended to use `--prefix` according to your sample name to avoid mixing male and female samples.
 
+```
+SEXmer dump - Generate and filter a k-mer dump sequence from raw WGS reads.
+
+Usage: SEXmer dump --prefix <sample> <reads_1.fq.gz> [reads_2.fq.gz] [OPTIONS]
+
+Mandatory:
+  --prefix             The prefix used on generated files
+  <reads>              Raw WGS short reads or long reads (.gz is accepted)
+
+Optional:
+  -k, --kmer-size      Specify k-mer size (1-63)                      [default: ${KMER_SIZE}]
+  --min-count          Minimum k-mer count (KMC -ci)                  [default: ${MIN_COUNT}]
+  --trigger-seq        Specify a trigger sequence (i.e. AG)           [default: off]
+  -t, --threads        Specify CPU threads for this task              [default: ${THREADS}]
+  -o, --outdir         Specify output directory name                  [default: current dir]
+  --tmpdir             Specify parent directory for the temp files    [default: current dir]
+  --kmc-bin            Specify path containing KMC binaries           [default: PATH]
+  -h, --help           Show this help message and exit
+```
+
+Output files should be as follows:
+```
+<prefix>.dump.gz  | The kmer dump sequence in compressed form.
+```
 
 ### SEXmer scan
 Scan all kmer sequences from the pooled male and female sample output from SEXmer dump and classify them as MSK, FSK, MBK, FBK, and neutral. The core biological algorithm in this module is inspired by [Akagi et al. (2014)](https://www.science.org/doi/10.1126/science.1257225) from their Science paper. `SEXmer scan` uses disk-based and streaming algorithms to reduce RAM consumption (even 8 GB RAM is enough to run this module). 
 
 It's recommended to use at least 8 samples from both sexes for a better result. If sequencing depth is sufficient, 8 to 10 samples will produce a good result. Using more than 10 samples from both sexes is not always necessary. Make sure you do **NOT** mix male and female samples.
 
+```
+SEXmer scan - Scan all k-mer sequences and classify them as MSK, FSK, MBK, FBK, or neutral.
+
+Usage: SEXmer scan -m <male_files> -f <female_files> [OPTIONS]
+
+Mandatory:
+  -m, --male           Specify male dump files (separated by commas)
+  -f, --female         Specify female dump files (separated by commas)
+
+Optional:
+  --prefix             The prefix used on generated files              [default: output]
+  -o, --outdir         Specify output directory name                   [default: current dir]
+  --mem                Specify max MEM for this task (e.g. 8G)         [default: ${MEM}]
+  -t, --threads        Specify CPU threads for this task               [default: ${THREADS}]
+  --neutral-max        Maximum neutral k-mers to retain, 0=keep all    [default: ${NEUTRAL_MAX}]
+  --tmpdir             Parent directory for the temporary work folder  [default: current dir]
+  --min-count          Minimum k-mer count to retain                   [default: ${MIN_COUNT}]
+  --max-count          Maximum pooled k-mer count within one sex       [default: ${MAX_COUNT}]
+  --fold-threshold     Specify fold-change cutoff for MBK/FBK          [default: ${FOLD_THRESHOLD}]
+  --seed               Specify random seed for neutral k-mer sampling  [default: ${SEED}]
+  --no-plot            Do not generate any visualization
+  --plot-format        Specify plot format: svg, png, or pdf           [default: ${PLOT_FORMAT}]
+  -h, --help           Show this help message and exit
+
+Categories:
+  MSK      Male-specific k-mer
+  FSK      Female-specific k-mer
+  MBK      Male-biased k-mer
+  FBK      Female-biased k-mer
+  neutral  K-mer without sex-specific or sex-biased signal
+```
+
+Output files should be as follows:
+```
+<prefix>.kmers.tsv        | Classified MSK, FSK, MBK, FBK, and neutral kmer in a .tsv file.
+<prefix>.MSK.fa           | MSK sequence in FASTA file, extracted from the .tsv file.
+<prefix>.FSK.fa           | FSK sequence in FASTA file, extracted from the .tsv file.
+<prefix>.sexplot.png      | Scatter plot for MSK, FSK, MBK, FBK, and neutral in left panel; Bar plot for FSK and MSK in right panel.
+<prefix>.abundance.png    | Abundance plot for MSK, FSK, MBK, FBK, and neutral. This is usefull to see the abundance position of MSK or FSK.
+```
 
 ### SEXmer reads
 Extract specific reads based on kmer sequence (MSK or FSK), output from `SEXmer scan`. Make sure the kmer sequence used in this module is generated from the `SEXmer scan`.
