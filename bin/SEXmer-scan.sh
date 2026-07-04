@@ -9,6 +9,7 @@ MIN_COUNT=3
 MAX_COUNT=1000
 FOLD_THRESHOLD=5
 PREFIX="output"
+OUTDIR="."
 MEM="8G"
 THREADS=8
 MALE_INPUT=""
@@ -26,7 +27,7 @@ warn()    { echo "[Warning] $*" >&2; }
 error()   { echo "[Error] $*"  >&2; }
 
 usage() {
-    cat >&2 <<EOF
+    cat <<EOF
 
 SEXmer-scan.sh - K-mer sex-specificity classifier from KMC dump files.
 
@@ -38,12 +39,13 @@ Mandatory:
 
 Optional:
   --prefix             Output filename prefix                          [default: output]
+  -o, --outdir         Output directory                                [default: current dir]
   --mem                Memory budget for sort operations (e.g. 8G)     [default: ${MEM}]
   -t, --threads        CPU threads                                     [default: ${THREADS}]
   --neutral-max        Maximum neutral k-mers to retain, 0=keep all    [default: ${NEUTRAL_MAX}]
   --tmpdir             Parent directory for the temporary work folder  [default: current dir]
-  --min-count          Minimum k-mer count to retain (all categories)  [default: ${MIN_COUNT}]
-  --max-count          Maximum k-mer count to retain (all categories)  [default: ${MAX_COUNT}]
+  --min-count          Minimum k-mer count to retain                   [default: ${MIN_COUNT}]
+  --max-count          Maximum pooled k-mer count within one sex       [default: ${MAX_COUNT}]
   --fold-threshold     Fold-change cutoff for MBK/FBK                  [default: ${FOLD_THRESHOLD}]
   --seed               Random seed for neutral k-mer sub-sampling      [default: ${SEED}]
   --no-plot            Do not generate visualization plots
@@ -51,33 +53,36 @@ Optional:
   -h, --help           Show this help and exit
 
 EOF
-    exit 1
 }
 
-[[ $# -eq 0 ]] && usage
+if [[ $# -eq 0 ]]; then
+    usage >&2
+    exit 1
+fi
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        -m|--male)           MALE_INPUT="$2";    shift 2 ;;
-        -f|--female)         FEMALE_INPUT="$2";  shift 2 ;;
-        --prefix)            PREFIX="$2";        shift 2 ;;
-        --mem)               MEM="$2";           shift 2 ;;
-        -t|--threads)        THREADS="$2";       shift 2 ;;
-        --neutral-max)       NEUTRAL_MAX="$2";   shift 2 ;;
-        --tmpdir)            TMPDIR_BASE="$2";   shift 2 ;;
-        --min-count)         MIN_COUNT="$2";     shift 2 ;;
-        --max-count)         MAX_COUNT="$2";     shift 2 ;;
+        -m|--male)           MALE_INPUT="$2";     shift 2 ;;
+        -f|--female)         FEMALE_INPUT="$2";   shift 2 ;;
+        --prefix)            PREFIX="$2";         shift 2 ;;
+        -o|--outdir)         OUTDIR="$2";         shift 2 ;;
+        --mem)               MEM="$2";            shift 2 ;;
+        -t|--threads)        THREADS="$2";        shift 2 ;;
+        --neutral-max)       NEUTRAL_MAX="$2";    shift 2 ;;
+        --tmpdir)            TMPDIR_BASE="$2";    shift 2 ;;
+        --min-count)         MIN_COUNT="$2";      shift 2 ;;
+        --max-count)         MAX_COUNT="$2";      shift 2 ;;
         --fold-threshold)    FOLD_THRESHOLD="$2"; shift 2 ;;
-        --seed)              SEED="$2";          shift 2 ;;
-        --no-plot)           PLOT_ENABLED=0;    shift ;;
-        --plot-format)       PLOT_FORMAT="$2";  shift 2 ;;
-        -h|--help)           usage ;;
-        *) error "Unknown option '$1'"; usage ;;
+        --seed)              SEED="$2";           shift 2 ;;
+        --no-plot)           PLOT_ENABLED=0;      shift ;;
+        --plot-format)       PLOT_FORMAT="$2";    shift 2 ;;
+        -h|--help)           usage; exit 0 ;;
+        *) error "Unknown option '$1'"; usage >&2; exit 1 ;;
     esac
 done
 
-[[ -z "$MALE_INPUT" ]]   && { error "-m/--male files not specified.";   usage; }
-[[ -z "$FEMALE_INPUT" ]] && { error "-f/--female files not specified."; usage; }
+[[ -z "$MALE_INPUT" ]]   && { error "-m/--male files not specified.";   usage >&2; exit 1; }
+[[ -z "$FEMALE_INPUT" ]] && { error "-f/--female files not specified."; usage >&2; exit 1; }
 
 [[ "$MIN_COUNT" =~ ^[1-9][0-9]*$ ]] || {
     error "--min-count must be a positive integer."; exit 1; }
@@ -105,6 +110,16 @@ esac
 
 [[ -d "$TMPDIR_BASE" ]] || { error "Temporary parent directory does not exist: $TMPDIR_BASE"; exit 1; }
 [[ -w "$TMPDIR_BASE" ]] || { error "Temporary parent directory is not writable: $TMPDIR_BASE"; exit 1; }
+
+mkdir -p "$OUTDIR" || { error "Failed to create output directory: $OUTDIR"; exit 1; }
+[[ -d "$OUTDIR" ]] || { error "Output path is not a directory: $OUTDIR"; exit 1; }
+[[ -w "$OUTDIR" ]] || { error "Output directory is not writable: $OUTDIR"; exit 1; }
+
+if [[ "$OUTDIR" == "." ]]; then
+    OUTPUT_PREFIX="$PREFIX"
+else
+    OUTPUT_PREFIX="${OUTDIR%/}/${PREFIX}"
+fi
 
 IFS=',' read -ra MALE_FILES   <<< "$MALE_INPUT"
 IFS=',' read -ra FEMALE_FILES <<< "$FEMALE_INPUT"
@@ -140,13 +155,10 @@ if [[ "$PLOT_ENABLED" -eq 1 ]]; then
     PLOTTER="${SCAN_TMPDIR}/sexmer_scan_plot.py"
     cat > "$PLOTTER" <<'PYPLOT'
 #!/usr/bin/env python3
-# SEXmer-plot.py - Generate publication-ready figures from SEXmer scan output.
-# Author: Dede Kurniawan
 
 import argparse
 import os
 import sys
-
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.colors as mcolors
@@ -156,7 +168,6 @@ from matplotlib.gridspec import GridSpec
 import numpy as np
 import pandas as pd
 from scipy.ndimage import gaussian_filter
-
 
 # defaults
 COLORS = {
@@ -188,9 +199,6 @@ Optional:
   --format             Output format: svg, png, or pdf    [default: svg]
   -h, --help           Show this help and exit
 
-Output files:
-  {prefix}_sexplot.{format}    scatter + bar plot
-  {prefix}_abundance.{format}  raw scatter + smooth density plot
 """, file=sys.stderr)
     sys.exit(1)
 
@@ -523,19 +531,19 @@ build_consistency_index "male"   "$SCAN_TMPDIR/male_consistent.txt"   "$N_MALE" 
 build_consistency_index "female" "$SCAN_TMPDIR/female_consistent.txt" "$N_FEMALE" "${FEMALE_FILES[@]}"
 
 # STEP 3: Identify MSK candidates
-info "Identifying MSK candidates (male-consistent, pooled count >= ${MIN_COUNT})..."
+info "Identifying MSK candidates (male-consistent, pooled count ${MIN_COUNT}-${MAX_COUNT})..."
 
 join "$SCAN_TMPDIR/male_consistent.txt" "$SCAN_TMPDIR/male_agg.txt" \
-| awk -v mc="$MIN_COUNT" '$2 >= mc' \
+| awk -v mn="$MIN_COUNT" -v mx="$MAX_COUNT" '$2 >= mn && $2 <= mx' \
 > "$SCAN_TMPDIR/msk_candidates.txt"
 
 info "  $(wc -l < "$SCAN_TMPDIR/msk_candidates.txt") MSK candidates before cross-sex filter."
 
 # STEP 4: Identify FSK candidates
-info "Identifying FSK candidates (female-consistent, pooled count >= ${MIN_COUNT})..."
+info "Identifying FSK candidates (female-consistent, pooled count ${MIN_COUNT}-${MAX_COUNT})..."
 
 join "$SCAN_TMPDIR/female_consistent.txt" "$SCAN_TMPDIR/female_agg.txt" \
-| awk -v mc="$MIN_COUNT" '$2 >= mc' \
+| awk -v mn="$MIN_COUNT" -v mx="$MAX_COUNT" '$2 >= mn && $2 <= mx' \
 > "$SCAN_TMPDIR/fsk_candidates.txt"
 
 info "  $(wc -l < "$SCAN_TMPDIR/fsk_candidates.txt") FSK candidates before cross-sex filter."
@@ -578,12 +586,12 @@ awk '{print $1}' "$SCAN_TMPDIR/fsk_final.txt" > "$SCAN_TMPDIR/fsk_kmers.txt"
 info "Pre-computing MBK/FBK candidates using disk-based join..."
 
 join "$SCAN_TMPDIR/male_consistent.txt" "$SCAN_TMPDIR/union_counts.txt" \
-| awk -v ft="$FOLD_THRESHOLD" '$3 > 0 && $2 >= ft * $3 { print $1 }' \
+| awk -v ft="$FOLD_THRESHOLD" -v nm="$N_MALE" -v nf="$N_FEMALE" '$3 > 0 && $2 * nf >= ft * $3 * nm { print $1 }' \
 | join -v 1 - "$SCAN_TMPDIR/msk_kmers.txt" \
 > "$SCAN_TMPDIR/mbk_kmers.txt"
 
 join "$SCAN_TMPDIR/female_consistent.txt" "$SCAN_TMPDIR/union_counts.txt" \
-| awk -v ft="$FOLD_THRESHOLD" '$2 > 0 && $3 >= ft * $2 { print $1 }' \
+| awk -v ft="$FOLD_THRESHOLD" -v nm="$N_MALE" -v nf="$N_FEMALE" '$2 > 0 && $3 * nm >= ft * $2 * nf { print $1 }' \
 | join -v 1 - "$SCAN_TMPDIR/fsk_kmers.txt" \
 > "$SCAN_TMPDIR/fbk_kmers.txt"
 
@@ -594,6 +602,8 @@ info "  $(wc -l < "$SCAN_TMPDIR/fbk_kmers.txt") FBK candidates."
 info "Annotating k-mers with categories..."
 
 awk -v ft="$FOLD_THRESHOLD" \
+    -v nm="$N_MALE" \
+    -v nf="$N_FEMALE" \
     -v msk_f="$SCAN_TMPDIR/msk_kmers.txt" \
     -v fsk_f="$SCAN_TMPDIR/fsk_kmers.txt" \
     -v mbk_f="$SCAN_TMPDIR/mbk_kmers.txt" \
@@ -611,7 +621,7 @@ awk -v ft="$FOLD_THRESHOLD" \
         else if (kmer in fsk)                                        { cat = "FSK"     }
         else if (kmer in mbk)                                        { cat = "MBK"     }
         else if (kmer in fbk)                                        { cat = "FBK"     }
-        else if (mc > 0 && fc > 0 && mc < ft * fc && fc < ft * mc) { cat = "neutral" }
+        else if (mc > 0 && fc > 0 && mc * nf < ft * fc * nm && fc * nm < ft * mc * nf) { cat = "neutral" }
         else                                                         { next            }
 
         print kmer "\t" mc "\t" fc "\t" cat
@@ -662,7 +672,7 @@ else
 fi
 
 # STEP 10: Write main TSV output
-TSV_OUT="${PREFIX}.kmers.tsv"
+TSV_OUT="${OUTPUT_PREFIX}.kmers.tsv"
 info "Writing main TSV output..."
 
 {
@@ -673,18 +683,18 @@ info "Writing main TSV output..."
 output "Main k-mer table written to: ${TSV_OUT}"
 
 # STEP 11: Write FASTA outputs
-MSK_FA="${PREFIX}.MSK.fa"
-FSK_FA="${PREFIX}.FSK.fa"
+MSK_FA="${OUTPUT_PREFIX}.MSK.fa"
+FSK_FA="${OUTPUT_PREFIX}.FSK.fa"
 
 info "Writing MSK FASTA output..."
-awk 'BEGIN { n=0 }
-     { n++; printf ">MSK_%d count=%s\n%s\n", n, $2, $1 }
-' "$SCAN_TMPDIR/msk_final.txt" > "$MSK_FA"
+awk -F'\t' 'BEGIN { n=0 }
+     NR > 1 && $4 == "MSK" { n++; printf ">MSK_%d count=%s\n%s\n", n, $2, $1 }
+' "$TSV_OUT" > "$MSK_FA"
 
 info "Writing FSK FASTA output..."
-awk 'BEGIN { n=0 }
-     { n++; printf ">FSK_%d count=%s\n%s\n", n, $2, $1 }
-' "$SCAN_TMPDIR/fsk_final.txt" > "$FSK_FA"
+awk -F'\t' 'BEGIN { n=0 }
+     NR > 1 && $4 == "FSK" { n++; printf ">FSK_%d count=%s\n%s\n", n, $3, $1 }
+' "$TSV_OUT" > "$FSK_FA"
 
 output "MSK sequences written to: ${MSK_FA}"
 output "FSK sequences written to: ${FSK_FA}"
@@ -692,9 +702,9 @@ output "FSK sequences written to: ${FSK_FA}"
 # STEP 12: Generate visualization plots
 if [[ "$PLOT_ENABLED" -eq 1 ]]; then
     info "Generating visualization plots from main TSV output..."
-    python3 "$PLOTTER" -i "$TSV_OUT" --prefix "$PREFIX" --format "$PLOT_FORMAT"
-    SEX_PLOT="${PREFIX}_sexplot.${PLOT_FORMAT}"
-    ABUNDANCE_PLOT="${PREFIX}_abundance.${PLOT_FORMAT}"
+    python3 "$PLOTTER" -i "$TSV_OUT" --prefix "$OUTPUT_PREFIX" --format "$PLOT_FORMAT"
+    SEX_PLOT="${OUTPUT_PREFIX}_sexplot.${PLOT_FORMAT}"
+    ABUNDANCE_PLOT="${OUTPUT_PREFIX}_abundance.${PLOT_FORMAT}"
     [[ -f "$SEX_PLOT" ]] || { error "Plotter did not produce output file: $SEX_PLOT"; exit 1; }
     [[ -f "$ABUNDANCE_PLOT" ]] || { error "Plotter did not produce output file: $ABUNDANCE_PLOT"; exit 1; }
     output "Sex plot written to: ${SEX_PLOT}"
