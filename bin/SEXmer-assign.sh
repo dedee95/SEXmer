@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SEXmer-assign.sh - Assign sex from unknown samples using sex-specific marker k-mers.
+# SEXmer assign - Assign sex from unknown samples using sex-specific marker k-mers.
 # Author: Dede Kurniawan
 
 set -euo pipefail
@@ -25,9 +25,9 @@ error()   { echo "[Error] $*"  >&2; }
 usage() {
     cat <<EOF
 
-SEXmer-assign.sh - Assign sex from unknown samples using sex-specific marker k-mers.
+SEXmer assign - Assign sex from unknown samples using sex-specific marker k-mers.
 
-Usage: SEXmer-assign.sh <markers.fa> -i <dump_files> --type <XY|ZW> [OPTIONS]
+Usage: SEXmer assign <markers.fa> -i <dump_files> --type <XY|ZW> [OPTIONS]
 
 Mandatory:
   <markers.fa>          SEXmer marker FASTA from SEXmer-scan.
@@ -170,7 +170,7 @@ done
 REPORT_OUT="${OUTDIR%/}/${OUTPUT_PREFIX}.assign.txt"
 ENGINE="${ASSIGN_TMPDIR}/sexmer_assign_engine.py"
 
-info "SEXmer-assign starting"
+info "SEXmer assign starting"
 info "Parameters: kmer-size=${KMER_SIZE}, type=${TYPE}"
 info "Settings  : threads=${THREADS}"
 info "Marker file    : ${MARKERS}"
@@ -669,4 +669,4 @@ python3 "$ENGINE" \
     --out "$REPORT_OUT"
 
 output "Assignment report written to: ${REPORT_OUT}"
-info "SEXmer-assign complete."
+info "SEXmer assign complete."
