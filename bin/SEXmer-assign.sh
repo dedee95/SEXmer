@@ -41,7 +41,7 @@ Optional:
                         [default: derived from dump filename by removing .dump.gz/.dump]
   -k, --kmer-size       K-mer size used for marker parsing             [default: ${KMER_SIZE}]
   -t, --threads         Number of samples processed in parallel        [default: ${THREADS}]
-  -o, --outdir         Output directory                                [default: current dir]
+  -o, --outdir          Output directory                               [default: current dir]
   --tmpdir              Parent directory for temporary work folder     [default: current dir]
   -h, --help            Show this help and exit
 
