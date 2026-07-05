@@ -5,7 +5,7 @@
 set -euo pipefail
 export LC_ALL=C
 
--_SIZE=21
+KMER_SIZE=21
 MIN_COUNT=3
 TRIGGER_SEQ=""
 THREADS=4
