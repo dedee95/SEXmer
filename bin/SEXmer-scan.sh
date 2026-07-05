@@ -593,12 +593,12 @@ awk '{print $1}' "$SCAN_TMPDIR/fsk_final.txt" > "$SCAN_TMPDIR/fsk_kmers.txt"
 info "Pre-computing MBK/FBK candidates using disk-based join..."
 
 join "$SCAN_TMPDIR/male_consistent.txt" "$SCAN_TMPDIR/union_counts.txt" \
-| awk -v ft="$FOLD_THRESHOLD" -v nm="$N_MALE" -v nf="$N_FEMALE" '$3 > 0 && $2 * nf >= ft * $3 * nm { print $1 }' \
+| awk -v ft="$FOLD_THRESHOLD" '$3 > 0 && $2 >= ft * $3 { print $1 }' \
 | join -v 1 - "$SCAN_TMPDIR/msk_kmers.txt" \
 > "$SCAN_TMPDIR/mbk_kmers.txt"
 
 join "$SCAN_TMPDIR/female_consistent.txt" "$SCAN_TMPDIR/union_counts.txt" \
-| awk -v ft="$FOLD_THRESHOLD" -v nm="$N_MALE" -v nf="$N_FEMALE" '$2 > 0 && $3 * nm >= ft * $2 * nf { print $1 }' \
+| awk -v ft="$FOLD_THRESHOLD" '$2 > 0 && $3 >= ft * $2 { print $1 }' \
 | join -v 1 - "$SCAN_TMPDIR/fsk_kmers.txt" \
 > "$SCAN_TMPDIR/fbk_kmers.txt"
 
