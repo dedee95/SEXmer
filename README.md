@@ -72,7 +72,7 @@ Use SEXmer <module> -h for detailed each module usage.
 ### SEXmer dump
 Generate and filter a kmer dump sequence from raw WGS reads. This core module backbone is disk-based computational, and it runs very fast to generate canonical kmer. By default, output from the `SEXmer dump` is in `.gz` format to reduce the file size.
 
-The input data can be either WGS short paired reads or long reads. If you have multiple samples, you need to run this module one by one. And it's truly recommended to use `--prefix` according to your sample name to avoid mixing male and female samples.
+The input data can be either WGS short paired reads or long reads. If you have multiple samples, you need to run this module one by one. It's truly recommended to use `--prefix` according to your sample name to avoid mixing male and female samples.
 
 ```
 SEXmer dump - Generate and filter a k-mer dump sequence from raw WGS reads.
@@ -100,7 +100,7 @@ Output files should be as follows:
 ```
 
 ### SEXmer scan
-Scan all kmer sequences from the pooled male and female sample output from SEXmer dump and classify them as MSK, FSK, MBK, FBK, and neutral. The core biological algorithm in this module is inspired by [Akagi et al. (2014)](https://www.science.org/doi/10.1126/science.1257225) from their Science paper. `SEXmer scan` uses disk-based and streaming algorithms to reduce RAM consumption (even 8 GB RAM is enough to run this module). 
+Scan all kmer sequences from the pooled male and female sample output from `SEXmer dump` and classify them as male specific kmer (MSK), female specific kmer (FSK), male bias kmer (MBK), female bias kmer (FBK), and neutral. The core biological algorithm in this module is inspired by [Akagi et al. (2014)](https://www.science.org/doi/10.1126/science.1257225) from their Science paper. `SEXmer scan` uses disk-based and streaming algorithms to reduce RAM consumption (even 8 GB RAM is enough to run this module). 
 
 It's recommended to use at least 8 samples from both sexes for a better result. If sequencing depth is sufficient, 8 to 10 samples will produce a good result. Using more than 10 samples from both sexes is not always necessary. Make sure you do **NOT** mix male and female samples.
 
@@ -155,7 +155,7 @@ An example of `<prefix>.abundance.png`:
 ### SEXmer reads
 Extract specific reads based on kmer sequence (MSK or FSK), output from `SEXmer scan`. Make sure the kmer sequence used in this module is generated from the `SEXmer scan`.
 
-Input reads can be WGS paired short reads or long reads (ONT, Cyclone, or PacBio). For long reads, it's recommended to set `--hit` to more than 1 to get truly specific reads. If long noisy reads are used, it's recommended to polish the reads first; if not, it's also fine.
+Input reads can be WGS paired short reads or long reads ([ONT](https://nanoporetech.com/), [Cyclone](https://en.cyclone-seq.com/), or [PacBio](https://www.pacb.com/)). For long reads, it's recommended to set `--hit` to more than 1 to get truly specific reads (3 is fine for long reads). If long noisy reads are used, it's recommended to polish the reads first; if not, it's also fine.
 
 ```
 SEXmer reads - Extract specific reads based on k-mer sequence (MSK or FSK).
@@ -190,9 +190,9 @@ Output files should be as follows:
 ```
 
 ### SEXmer map
-Map the specific kmer sequence into the genome reference and generate kmer hits along the window and step size. The main purpose of this module is to perform kmer enrichment across a reference genome, then identify it as SDR. This module also facilitates mapping the extracted reads into the genome and generating depth information. Moreover, this module generates a Manhattan plot to see the SDR signal location.
+Map sex-specific kmer sequence into the genome reference and generate kmer hits along the window and step size. The main purpose of this module is to perform kmer enrichment across a reference genome, then identify it as SDR. This module also facilitates mapping the extracted reads into the genome and generating depth information. Moreover, this module generates a [Manhattan plot](https://en.wikipedia.org/wiki/Manhattan_plot) to see the SDR signal location.
 
-If the sex type is XY, it is recommended to use the MSK sequence for mapping into the genome reference. For ZW sex type, use the FSK sequence. Extracted sex specific WGS short reads and long reads can be used as well. Based on our experience, extracted sex specific reads with very low depth are enough to just locate the SDR signal.
+If the sex type is XY, it is recommended to use the MSK sequence for mapping into the genome reference. For ZW sex type, use the FSK sequence. Extracted sex specific WGS short reads and long reads can be used as well. Based on our experience, extracted sex specific reads with very low depth are enough to just locate the SDR signal. If you want to use huge reads data for mapping, please use a common mapping tool such as [BWA-MEM2](https://github.com/bwa-mem2/bwa-mem2) or [minimap2](https://github.com/lh3/minimap2) instead.
 
 ```
 SEXmer map - Map specific k-mer sequence or reads into the genome reference.
@@ -225,8 +225,8 @@ Output files should be as follows:
 
 Output files if `-r` or `--reads` are specified:
 ```
-<prefix>.reads.manhattan.svg   | Manhattan style plot. Y axes represent reads depth and X axes represent chromosome region.
-<prefix>.reads.windows.tsv     | A .tsv file that contain several information, chr, start, end, and depth.
+<prefix>.reads.manhattan.svg  | Manhattan style plot. Y axes represent reads depth and X axes represent chromosome region.
+<prefix>.reads.windows.tsv    | A .tsv file that contain several information, chr, start, end, and depth.
 ```
 
 An example of `<prefix>.kmer.manhattan.svg`:
@@ -238,7 +238,7 @@ An example of `<prefix>.reads.manhattan.svg`:
 ![n example of kmer hits on manhattan style plot](docs/Cycas.reads.manhattan.png)
 
 ### SEXmer assign
-Assign sex from unknown samples using sex-specific kmer (MSK or FSK) from `SEXmer scan`. SEXmer assigns a sex-specific kmer present ratio to classify an unknown sample into male or female. The quality of the assignment heavily depends on the quality and transferability of the sex-specific kmer. In the future, we will implement our self-developed algorithm,  "*SEXmer iterative classifier (SIC)*", for a more robust classification. 
+Assign sex from unknown samples using sex-specific kmer (MSK or FSK) from `SEXmer scan`. This module uses sex-specific kmer present ratio to classify an unknown sample into male or female. The quality of the assignment **HEAVILY DEPENDS** on the quality and transferability of the sex-specific kmer. In the future, we will implement our self-developed algorithm,  "*SEXmer iterative classifier (SIC)*", for a more robust classification. 
 
 For XY sex type, use MSK as a sex-specific kmer marker and use FSK if the sex type is ZW. Input all of the unknown reads sample at once. If the original MSK or FSK set is weak or noisy, assignment performance may be poor. Only trust the result when it shows "**high confidence**".
 
