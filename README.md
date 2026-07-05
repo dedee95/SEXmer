@@ -1,6 +1,6 @@
 # SEXmer: Fast and resource efficient sex determination analysis using kmer
 ![Python Version](https://img.shields.io/badge/python-3.8+-blue.svg)
-![MIT license](https://img.shields.io/badge/License-MIT-Blue.svg)
+![GPL v3 license](https://img.shields.io/badge/License-GPLv3-blue.svg)
 
 <img src="docs/SEXmer-logo.png" alt="SEXmer logo" width="350">
 
