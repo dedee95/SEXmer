@@ -28,6 +28,65 @@ error() {
     echo "[Error] $*" >&2
 }
 
+join_by() {
+    local sep="$1"
+    shift
+    local out=""
+    local item
+    for item in "$@"; do
+        if [[ -z "$out" ]]; then
+            out="$item"
+        else
+            out="${out}${sep}${item}"
+        fi
+    done
+    echo "$out"
+}
+
+check_dependencies() {
+    local missing=()
+    local bin
+    local kmc_missing=0
+    local bbmap_missing=0
+    local py_missing=""
+
+    for bin in kmc kmc_dump; do
+        command -v "$bin" &>/dev/null || kmc_missing=1
+    done
+    [[ "$kmc_missing" -eq 1 ]] && missing+=("KMC")
+
+    for bin in bbmap.sh bbduk.sh reformat.sh; do
+        command -v "$bin" &>/dev/null || bbmap_missing=1
+    done
+    [[ "$bbmap_missing" -eq 1 ]] && missing+=("BBMAP")
+
+    if ! command -v sort &>/dev/null || ! sort --version 2>/dev/null | grep -q 'GNU'; then
+        missing+=("GNU sort")
+    fi
+
+    command -v gzip &>/dev/null || missing+=("gzip")
+    command -v awk &>/dev/null || missing+=("awk")
+
+    if command -v python3 &>/dev/null; then
+        py_missing=$(python3 - <<'PYCHECK' 2>/dev/null || true
+import importlib.util
+mods = ["pandas", "numpy", "matplotlib", "scipy"]
+missing = [m for m in mods if importlib.util.find_spec(m) is None]
+if missing:
+    print(", ".join(missing))
+PYCHECK
+)
+        [[ -n "$py_missing" ]] && missing+=("Python packages: ${py_missing}")
+    else
+        missing+=("python3")
+    fi
+
+    if [[ ${#missing[@]} -gt 0 ]]; then
+        error "Missing dependencies: $(join_by ', ' "${missing[@]}")"
+        exit 1
+    fi
+}
+
 run_module() {
     local module="$1"
     shift
@@ -48,12 +107,14 @@ run_module() {
 }
 
 if [[ $# -eq 0 ]]; then
+    check_dependencies
     usage
     exit 0
 fi
 
 case "$1" in
     -h|--help)
+        check_dependencies
         usage
         exit 0
         ;;
