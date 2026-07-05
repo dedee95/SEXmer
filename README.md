@@ -69,6 +69,10 @@ assign    Assign sex using validated sex-specific markers.
 Use SEXmer <module> -h for detailed each module usage.
 ```
 
+Here is a typical SEXmer workflow for XY and ZW sex type. The main difference when working with XY and ZW is the sexmer scan result. In XY, we mainly use MSK for further analysis, but in ZW, we mainly use FSK for further analysis.
+
+![SEXmer general workflow](docs/SEXmer-workflow.png)
+
 ### SEXmer dump
 Generate and filter a kmer dump sequence from raw WGS reads. This core module backbone is disk-based computational, and it runs very fast to generate canonical kmer. By default, output from the `SEXmer dump` is in `.gz` format to reduce the file size.
 
