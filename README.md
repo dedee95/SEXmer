@@ -20,6 +20,22 @@ map       Map sex-specific k-mers or sex-specific reads.
 assign    Assign sex using validated sex-specific markers.
 ```
 
+## Table of Contents
+- [SEXmer: Fast and resource efficient sex determination analysis using kmer](#sexmer-fast-and-resource-efficient-sex-determination-analysis-using-kmer)
+  - [Table of Contents](#table-of-contents)
+  - [Getting Started](#getting-started)
+  - [Quick Usage Guide](#quick-usage-guide)
+    - [SEXmer dump](#sexmer-dump)
+    - [SEXmer scan](#sexmer-scan)
+    - [SEXmer reads](#sexmer-reads)
+    - [SEXmer map](#sexmer-map)
+    - [SEXmer assign](#sexmer-assign)
+  - [Frequently asked questions (FAQs)](#frequently-asked-questions-faqs)
+  - [Limitation](#limitation)
+  - [Citation](#citation)
+  - [Contact information](#contact-information)
+
+
 ## Getting Started
 SEXmer command line tool currently only available for Linux (tested on Ubuntu and CentOS). SEXmer is implemented as a bash script, embedded with Python, and using some external dependencies.
 
