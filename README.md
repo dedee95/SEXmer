@@ -20,8 +20,9 @@ map       Map sex-specific k-mers or sex-specific reads.
 assign    Assign sex using validated sex-specific markers.
 ```
 
-**Table of Contents**
+## Table of Contents
 - [SEXmer: Fast and resource efficient sex determination analysis using kmer](#sexmer-fast-and-resource-efficient-sex-determination-analysis-using-kmer)
+  - [Table of Contents](#table-of-contents)
   - [Getting Started](#getting-started)
   - [Quick Usage Guide](#quick-usage-guide)
     - [SEXmer dump](#sexmer-dump)
