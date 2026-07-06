@@ -860,10 +860,13 @@ def create_plot(
     ax.set_ylabel(y_label, fontsize=18, labelpad=10)
 
     y_upper = nice_y_upper(df["plot_value"])
-    ax.set_ylim(0, y_upper)
+
+    y_lower = -0.02 * y_upper
+    ax.set_ylim(y_lower, y_upper)
     ax.yaxis.set_major_locator(MaxNLocator(nbins=6, prune=None, steps=[1, 2, 2.5, 5, 10]))
-    # Force a clean top tick label at the y-axis maximum.
     ticks = [tick for tick in ax.get_yticks() if 0 <= tick < y_upper]
+    if 0.0 not in ticks:
+        ticks.insert(0, 0.0)
     if not ticks or ticks[-1] != y_upper:
         ticks.append(y_upper)
     ax.set_yticks(ticks)
