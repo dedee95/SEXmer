@@ -16,8 +16,8 @@ Modules:
 dump      Generate filtered canonical k-mer dump files.
 scan      Identify sex-specific and sex-biased k-mers.
 reads     Extract reads containing sex-specific k-mers.
-map       Map sex-specific k-mers or sex-specific reads.
-assign    Assign sex using validated sex-specific markers.
+map       Map sex-specific k-mers into reference genome.
+assign    Assign sex using retained sex-specific k-mers.
 
 Use SEXmer <module> -h for detailed each module usage.
 
