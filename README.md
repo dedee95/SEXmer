@@ -2,8 +2,6 @@
 ![Python Version](https://img.shields.io/badge/python-3.8+-blue.svg)
 ![GPL v3 license](https://img.shields.io/badge/License-GPLv3-blue.svg)
 
-<img src="docs/SEXmer-logo.png" alt="SEXmer logo" width="350">
-
 Identifying the sex determination region (SDR) in some plants or animals requires huge effort, especially for XY and ZW sex types. To detect SDR robustly, we generally need population samples for both male and female individuals. This study often produces large whole-genome sequencing (WGS) data. K-mer-based method is a powerful strategy for detecting the sex determination region. However, processing population-scale kmer data requires huge computational resources.
 
 Here we present `SEXmer`, a fast and resource-efficient command-line tool for sex determination region analysis based on kmer. 
@@ -11,14 +9,7 @@ Here we present `SEXmer`, a fast and resource-efficient command-line tool for se
 > **"`SEXmer` provides a modular workflow from raw reads to sex-specific k-mer discovery, kmer based reads extraction, unknown sex classifier, and genomic localization of candidate SDR signals."**
 
 Currently, SEXmer contain 5 modules:
-
-```bash
-dump      Generate filtered canonical k-mer dump files.
-scan      Identify sex-specific and sex-biased k-mers.
-reads     Extract reads containing sex-specific k-mers.
-map       Map sex-specific k-mers into reference genome.
-assign    Assign sex using retained sex-specific k-mers.
-```
+![SEXmer module list](docs/SEXmer-module.png)
 
 ## Table of Contents
 - [SEXmer: Fast and resource efficient sex determination analysis using kmer](#sexmer-fast-and-resource-efficient-sex-determination-analysis-using-kmer)
