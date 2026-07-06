@@ -4,9 +4,9 @@
 
 Identifying the sex determination region (SDR) in some plants or animals requires huge effort, especially for XY and ZW sex types. To detect SDR robustly, we generally need population samples for both male and female individuals. This study often produces large whole-genome sequencing (WGS) data. K-mer-based method is a powerful strategy for detecting the sex determination region. However, processing population-scale kmer data requires huge computational resources.
 
-Here we present `SEXmer`, a fast and resource-efficient command-line tool for sex determination region analysis based on kmer. 
+Here we present SEXmer, a fast and resource-efficient command-line tool for sex determination region analysis based on kmer. 
 
-> **"`SEXmer` provides a modular workflow from raw reads to sex-specific k-mer discovery, kmer based reads extraction, unknown sex classifier, and genomic localization of candidate SDR signals."**
+> **"SEXmer provides a modular workflow from raw reads to sex-specific k-mer discovery, kmer based reads extraction, unknown sex classifier, and genomic localization of candidate SDR signals."**
 
 Currently, SEXmer contain 5 modules:
 ![SEXmer module list](docs/SEXmer-module.png)
@@ -51,7 +51,7 @@ conda activate sexmer
 
 **Instalation**
 
-Currently, `SEXmer` only supports manual installation. Clone the repository or download a specific released package.
+Currently, SEXmer only supports manual installation. Clone the repository or download a specific released package.
 ```bash
 git clone https://github.com/dedee95/SEXmer.git
 cd SEXmer
@@ -76,7 +76,7 @@ assign    Assign sex using validated sex-specific markers.
 Use SEXmer <module> -h for detailed each module usage.
 ```
 
-Here is a typical `SEXmer` workflow for XY and ZW sex type. The main difference when working with XY and ZW is the `sexmer scan` result. In XY, we mainly use MSK for further analysis, but in ZW, we mainly use FSK for further analysis.
+Here is a typical SEXmer workflow for XY and ZW sex type. The main difference when working with XY and ZW is the `sexmer scan` result. In XY, we mainly use MSK for further analysis, but in ZW, we mainly use FSK for further analysis.
 
 ![SEXmer general workflow](docs/SEXmer-workflow.png)
 
@@ -281,16 +281,16 @@ Output files should be as follows:
 ```
 
 ## Frequently asked questions (FAQs)
-- Do I need to run the entire `SEXmer` module?
+- Do I need to run the entire SEXmer module?
 
-  Generally, not every analysis needs the `SEXmer` module. In case you only want to get sex-specific kmer, either MSK or FSK, you can just use `SEXmer dump` and `SEXmer scan`. If the reference genome is available, you can use `SEXmer map` to detect the SDR signal in which chromosome. If you want to assemble the sex chromosomes, you will need to extract sex-specific reads based on MSK (for XY type) or FSK (for ZW type), then perform assembly. Moreover, if you have an unknown WGS sample and you want to know whether it is male or female, you can use `SEXmer assign`.
+  Generally, not every analysis needs the SEXmer module. In case you only want to get sex-specific kmer, either MSK or FSK, you can just use `SEXmer dump` and `SEXmer scan`. If the reference genome is available, you can use `SEXmer map` to detect the SDR signal in which chromosome. If you want to assemble the sex chromosomes, you will need to extract sex-specific reads based on MSK (for XY type) or FSK (for ZW type), then perform assembly. Moreover, if you have an unknown WGS sample and you want to know whether it is male or female, you can use `SEXmer assign`.
 
 ## Limitation
-`SEXmer` is designed specifically for XY and ZW sex type with known male and female samples. Robutstness of sex-specific kmer (MSK or FSK) depends on sample quality, sample number, and sequencing depth. You truly need to have high confidence when labeling male and female samples for `SEXmer`. When you have a misclassified sample, `SEXmer` will perform poorly.
+SEXmer is designed specifically for XY and ZW sex type with known male and female samples. Robutstness of sex-specific kmer (MSK or FSK) depends on sample quality, sample number, and sequencing depth. You truly need to have high confidence when labeling male and female samples for SEXmer. When you have a misclassified sample, SEXmer will perform poorly.
 
 
 ## Citation
-`SEXmer` has no prior publication yet. If you use this tool in your research, please cite the repository for now.
+SEXmer has no prior publication yet. If you use this tool in your research, please cite the repository for now.
 > Kurniawan, D., Fang, W. & Tong, W. 2026. SEXmer: Fast and resource efficient sex determination analysis using kmer. https://github.com/dedee95/SEXmer
 
 ## Contact information
