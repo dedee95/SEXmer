@@ -9,7 +9,7 @@ This module basically is very simple; it generates kmer frequency (dump) from ea
 To reduce the output data, we implemented a minimum k-mer count and a trigger sequence. A kmer with a count less than 3 is most likely an artifact or sequencing error, so it is better to remove it. On the other hand, the trigger sequence makes the SEXmer dump keep only kmers that start with the nucleotide specified in the trigger sequence. For example, if we specify the trigger sequence as "AG", only kmers starting with "AG" will be kept. This can significantly reduce the kmer output (1/16) while still preserving important information.
 
 ## SEXmer scan
-Lorem ipsum sir dolor sit amet.
+Identify SEX association kmer.
 
 ## SEXmer reads
 SEXmer reads use bbduk.sh from the BBMAP package to extract reads using kmer. We chose to implement bbduk over other tools because bbduk runs very fast and uses less RAM. Not just for WGS short paired reads, bbduk can also be used to extract specific reads from long-read sequencing. This module works by matching the given kmer sequence to reads. If a read hits the given kmer, bbduk will keep it. For WGS paired-end, bbduk writes both mates if either mate has at least the minimum marker hits. The minimum hits for WGS short reads is 1, while short read sequencing should have a minimum of more than 1. Based on our experience, at least 3 hits should be sufficient for long-read extraction.
