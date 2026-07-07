@@ -11,7 +11,7 @@ Currently, SEXmer contain 5 modules:
 
 ## Important!
 - A detail algorithm for each SEXmer module can be read [here](docs/detail_algorithm.md).
-- SEXmer is already available in [DCS Cloud](www.dcs.cloud).
+- SEXmer is already available in [DCS Cloud](https://www.dcs.cloud/).
 
 ## Table of Contents
 - [SEXmer: Fast and resource efficient sex determination analysis using kmer](#sexmer-fast-and-resource-efficient-sex-determination-analysis-using-kmer)
