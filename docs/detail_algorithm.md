@@ -19,7 +19,7 @@ The core function of this module is to identify genomic regions enriched with a 
 
 
 ```
-1. Converted a sex-specific kmer sequence into a 2-bit encoded integer and stored it in a hash-based marker index.
+1. Convert a sex-specific kmer sequence into a 2-bit encoded integer and store it in a hash-based marker index.
 2. Scan the reference genome sequentially using a rolling integer kmer scanning algorithm. 
 3. Generate each genomic kmer at the current position using efficient 2-bit operations (bit shifting, masking, and integer encoding). 
 4. Query each genomic kmer against the marker index using hash lookup. 
@@ -44,7 +44,7 @@ SEXmer assign classify unknown WGS reads into male or female based on the sex-sp
   - High marker signal indicates female
   - Low marker signal indicates male
 
-The SEXmer assignment contains 2 classifiers: a standard classifier and a SEXmer iterative classifier (SIC).
+The SEXmer assign contains 2 classifiers: a standard classifier and a SEXmer iterative classifier (SIC).
 
 ### Standard classifier
 ```
@@ -75,8 +75,27 @@ Here are detail about largest gap clustering procedure
 ```
 
 ### SEXmer iterative classifier (SIC)
+The main goal of this algorithm is to improve sex-specific kmer scan when the initial known female or male sample are limited.
 
+```
+1. Take input from the initial known male and female samples with their sex-specific kmer.
+2. Convert the initial sex-specific kmer into a 2-bit encoded integer and store it in a hash-based marker index.
+3. Scan all unknown samples against the initial marker sex index.
+4. Calculate marker ratios for every unknown sample.
+5. Build a classification model using largest-gap clustering.
+6. Evaluate classification separation.
+7. Select unknown samples with strong high-marker or low-marker signals and assign pseudo-sex labels.
+8. Add pseudo-labeled samples into the corresponding reference group (known male & female).
+9. Recalculate MSK/FSK markers using updated references.
+10. Repeat the process until:
+    - Strong separation is achieved,
+    - Target reference size is reached (at the least 8 male or 8 female in total),
+    - No improvement occurs,
+    - Maximum iteration number is reached (10).
+11. Perform final sex assignment using the optimized marker set.
+```
 
+After all unknown samples are classified, we will have sufficient samples to generate robust sex-specific kmer (MSK/FSK). Then, we can choose 8 to 10 samples for both sexes for the final running of SEXmer assign.
 
 Generally, if the kmer marker is already robust, the standard classifier will suffice. A robust kmer marker can be achieved by using at least 8 male and female WGS samples with sufficient depth (>=10). Moreover, if the known sample isn't enough and is not balanced, i.e., 5 male + 10 female, you can use the --sic parameter to enable the SEXmer iterative classifier. However, this algorithm is still in early development; it is somewhat unstable and may not work well if the known sample size is too small.
 
