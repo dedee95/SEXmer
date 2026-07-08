@@ -6,7 +6,7 @@ SEXmer was initially inspired by [KMC](https://github.com/refresh-bio/KMC) for i
 ## SEXmer dump
 This module basically is very simple; it generates kmer frequency (dump) from each raw WGS read. The main backbone of this module is KMC. We chose KMC over other kmer-counting tools like Jellyfish or Meryl because it uses a disk-oriented architecture for kmer counting. In short, KMC uses less RAM, and it operates very fast. 
 
-To reduce the output data, we implemented a minimum k-mer count and a trigger sequence. A low-frequency kmer with a count less than 3 is most likely an artifact or sequencing error, so it is better to remove it. Therefore, this minimum count treshold is applied to reduce noise. On the other hand, the trigger sequence makes the SEXmer dump keep only kmers that start with the nucleotide specified in the trigger sequence. For example, if we specify the trigger sequence as "AG", only kmers starting with "AG" will be kept. This can significantly reduce the kmer output (1/16) while still preserving important information.
+To reduce the output data, we implemented a minimum kmer count and a trigger sequence. A low-frequency kmer with a count less than 3 is most likely an artifact or sequencing error, so it is better to remove it. Therefore, this minimum count treshold is applied to reduce noise. On the other hand, the trigger sequence makes the SEXmer dump keep only kmers that start with the nucleotide specified in the trigger sequence. For example, if we specify the trigger sequence as "AG", only kmers starting with "AG" will be kept. This can significantly reduce the kmer output (1/16) while still preserving important information.
 
 ## SEXmer scan
 SEXmer scan identifies and classifies kmers as sex-associated based on their presence across known male and female samples. In short, this module asks: 
@@ -24,7 +24,7 @@ FBK     | Female-biased kmer. Present in every female, and the female pooled cou
 neutral | Present in union of both sexes |
 
 
-Diagram biological algoritm
+![How SEXmer scan works part 1](./SEXmer-scan-algo1.png)
 
 SEXmer scan fully uses disk-based operation built around GNU sort, join, and awk. This design allows SEXmer to process large kmer data without loading all kmer into memory at once. Technically, 8 GB of RAM is enough to run this process even if your kmer dump file is very large.
 
@@ -38,7 +38,7 @@ SEXmer scan fully uses disk-based operation built around GNU sort, join, and awk
 7. Apply cross-sex exclusion to obtain true MSK and FSK.
 8. Build a full make/female union count table.
 9. Identify male-biased and female-biased kmers using fold-change filtering.
-10. Identify neutral k-mers without strong sex-specific or sex-biased signal.
+10. Identify neutral kmers without strong sex-specific or sex-biased signal.
 ```
 
 ## SEXmer reads
@@ -57,7 +57,7 @@ SEXmer map core algorithm use 2-bit integer encoding and rolling kmer scanning.
 1. Convert a sex-specific kmer sequence into a 2-bit encoded integer and store it in a hash-based marker index.
 2. Scan the reference genome sequentially using a rolling 2-bit integer scanner. 
 3. Generate each genomic kmer at the current position using efficient 2-bit operations (bit shifting, masking, and integer encoding). 
-4. At each genomic position, update the current k-mer using bit shifting and masking.
+4. At each genomic position, update the current kmer using bit shifting and masking.
 5. Skip kmers that contain non ATGC bases and query each valid genomic kmer against the marker index using hash lookup. 
 6. If a marker match is detected, record the chromosome and genomic coordinate of the kmer hit. 
 7. Assign each detected kmer hit to overlapping sliding windows based on its genomic coordinate. 
