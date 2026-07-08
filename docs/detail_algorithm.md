@@ -6,7 +6,7 @@ SEXmer was initially inspired by [KMC](https://github.com/refresh-bio/KMC) for i
 ## SEXmer dump
 This module basically is very simple; it generates kmer frequency (dump) from each raw WGS read. The main backbone of this module is KMC. We chose KMC over other kmer-counting tools like Jellyfish or Meryl because it uses a disk-oriented architecture for kmer counting. In short, KMC uses less RAM, and it operates very fast. 
 
-To reduce the output data, we implemented a minimum k-mer count and a trigger sequence. A kmer with a count less than 3 is most likely an artifact or sequencing error, so it is better to remove it. On the other hand, the trigger sequence makes the SEXmer dump keep only kmers that start with the nucleotide specified in the trigger sequence. For example, if we specify the trigger sequence as "AG", only kmers starting with "AG" will be kept. This can significantly reduce the kmer output (1/16) while still preserving important information.
+To reduce the output data, we implemented a minimum k-mer count and a trigger sequence. A low-frequency kmer with a count less than 3 is most likely an artifact or sequencing error, so it is better to remove it. Therefore, this minimum count treshold is applied to reduce noise. On the other hand, the trigger sequence makes the SEXmer dump keep only kmers that start with the nucleotide specified in the trigger sequence. For example, if we specify the trigger sequence as "AG", only kmers starting with "AG" will be kept. This can significantly reduce the kmer output (1/16) while still preserving important information.
 
 ## SEXmer scan
 Identify SEX association kmer.
@@ -44,9 +44,13 @@ SEXmer assign classify unknown WGS reads into male or female based on the sex-sp
   - High marker signal indicates female
   - Low marker signal indicates male
 
-The SEXmer assign contains 2 classifiers: a standard classifier and a SEXmer iterative classifier (SIC).
+The SEXmer assign contains 2 classifiers: 
+1. Standard classifier 
+2. SEXmer iterative classifier (SIC)
 
 ### Standard classifier
+This classifier assigns unknown WGS samples based on the provided sex-specific kmer and the present ratio.
+
 ```
 1. Provide robust sex-specific kmer marker output from SEXmer scan.
 2. Each kmer sequence will be converted into a 2-bit encoded integer and stored in a hash-based marker index.
@@ -57,7 +61,7 @@ The SEXmer assign contains 2 classifiers: a standard classifier and a SEXmer ite
 7. When the unknown sample set does not show clear separation, SEXmer applies predefined biological thresholds.
     - low signal group <= 20%
     - high signal group >= 80%
-    - ambiguous 20% - 60%
+    - ambiguous 20% - 80%
 ```
 
 Here are detail about largest gap clustering procedure
@@ -68,26 +72,29 @@ Here are detail about largest gap clustering procedure
 4. Identify the largest separation gap.
 5. Record the two values surrounding the largest gap.
 6. Calculate the midpoint between these two values as the classification threshold.
-7. Verify that the dataset contains both low-marker and high-marker groups.
-8. If the largest gap is ≥20% and both groups contain expected signal ranges, use largest-gap clustering.
+7. Check whether the dataset contains both low-marker and high-marker signal groups.
+8. Use largest-gap clustering only if: 
+    - the largest gap is ≥ 20%, and  
+    - at least one sample has low marker signal ≤ 20%, and 
+    - at least one sample has high marker signal ≥ 80%.
 9. Assign samples above the threshold as high-marker sex and samples below the threshold as low-marker sex.
-10. Calculate confidence according to separation strength.
+10. Calculate confidence according to marker-ratio separation strength.
 ```
 
 ### SEXmer iterative classifier (SIC)
-The main goal of this algorithm is to improve sex-specific kmer scan when the initial known female or male sample are limited.
+The main goal of this algorithm is to improve sex-specific kmer when the initial known female or male samples are limited. SIC uses the current sex-specific kmer to assign pseudolabels to unknown samples and iteratively improves the sex-specific marker set.
 
 ```
 1. Take input from the initial known male and female samples with their sex-specific kmer.
 2. Convert the initial sex-specific kmer into a 2-bit encoded integer and store it in a hash-based marker index.
 3. Scan all unknown samples against the initial marker sex index.
 4. Calculate marker ratios for every unknown sample.
-5. Build a classification model using largest-gap clustering.
-6. Evaluate classification separation.
-7. Select unknown samples with strong high-marker or low-marker signals and assign pseudo-sex labels.
+5. Build a classification model using largest-gap clustering or the fixed signal rule.
+6. Identify unknown samples with strong high-marker or low-marker signals.
+7. Assign high-confidence pseudo-sex labels to selected unknown samples (select 1 sample each iteration).
 8. Add pseudo-labeled samples into the corresponding reference group (known male & female).
-9. Recalculate MSK/FSK markers using updated references.
-10. Repeat the process until:
+9. Recalculate MSK/FSK markers using updated reference groups.
+10. Repeat the the scan, classification, pseudo-labeling, and marker-recalculation process until:
     - Strong separation is achieved,
     - Target reference size is reached (at the least 8 male or 8 female in total),
     - No improvement occurs,
