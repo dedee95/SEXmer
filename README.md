@@ -26,7 +26,6 @@ Currently, SEXmer contain 5 modules:
     - [SEXmer assign](#sexmer-assign)
   - [Frequently asked questions (FAQs)](#frequently-asked-questions-faqs)
   - [Limitation](#limitation)
-  - [Citation](#citation)
   - [Contact information](#contact-information)
 
 
@@ -290,11 +289,6 @@ Output files should be as follows:
 
 ## Limitation
 SEXmer is designed specifically for XY and ZW sex type with known male and female samples. Robutstness of sex-specific kmer (MSK or FSK) depends on sample quality, sample number, and sequencing depth. You truly need to have high confidence when labeling male and female samples for SEXmer. When you have a misclassified sample, SEXmer will perform poorly.
-
-
-## Citation
-SEXmer has no prior publication yet. If you use this tool in your research, please cite the repository for now.
-> Kurniawan, D., Fang, W. & Tong, W. 2026. SEXmer: Fast and resource efficient sex determination analysis using kmer. https://github.com/dedee95/SEXmer
 
 ## Contact information
 If you have any questions or suggestions regarding SEXmer, feel free to contact one of the contacts below.
