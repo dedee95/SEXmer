@@ -9,24 +9,37 @@ This module basically is very simple; it generates kmer frequency (dump) from ea
 To reduce the output data, we implemented a minimum k-mer count and a trigger sequence. A low-frequency kmer with a count less than 3 is most likely an artifact or sequencing error, so it is better to remove it. Therefore, this minimum count treshold is applied to reduce noise. On the other hand, the trigger sequence makes the SEXmer dump keep only kmers that start with the nucleotide specified in the trigger sequence. For example, if we specify the trigger sequence as "AG", only kmers starting with "AG" will be kept. This can significantly reduce the kmer output (1/16) while still preserving important information.
 
 ## SEXmer scan
-SEXmer scan identifies and classify kmers according to their sex-associated accros known male and female sample. In short, this module asks: 
+SEXmer scan identifies and classifies kmers as sex-associated based on their presence across known male and female samples. In short, this module asks: 
 
-> Given set of known male and female sample, which kmers are male-specific, female-specific, male-biased, female-biased, and neutral?
+> Given a set of known male and female samples, which kmers are male-specific, female-specific, male-biased, female-biased, and neutral?
 
-This module takes input kmer dump sequence generated from known male and female WGS samples using SEXmer dump. SEXmer scan compares male and female kmer profiles and classfies each retained kmer into one of five categories:
+This module takes input kmer dump sequences generated from known male and female WGS samples using SEXmer dump. SEXmer scan compares male and female kmer profiles and classifies each retained kmer into one of five categories:
 
 | Category | Meaning |
 |----------|---------|
 | MSK     | Male-specific kmer. Present in every male, and completely absent from all females. |
 | FSK     | Female-specific kmer. Present in every female, and completely absent from all males. |
 | MBK     | Male-biased kmer. Present in every male, and the male pooled count is at least `fold-threshold` times higher than the female count. |
-FBK     | female-biased kmer. Present in every female, and the female pooled count is at least `fold-threshold` times higher than the male count.   |
-neutral | present in union of both sexes |
+FBK     | Female-biased kmer. Present in every female, and the female pooled count is at least `fold-threshold` times higher than the male count.   |
+neutral | Present in union of both sexes |
 
 
+Diagram biological algoritm
 
+SEXmer scan fully uses disk-based operation built around GNU sort, join, and awk. This design allows SEXmer to process large kmer data without loading all kmer into memory at once. Technically, 8 GB of RAM is enough to run this process even if your kmer dump file is very large.
 
-
+```
+1. Read all male and female kmer dump files from the SEXmer dump.
+2. Sort each input file by kmer sequence and aggregate pooled kmer counts separately for males and females.
+3. Build a male consistency index containing kmers present in all male samples.
+4. Build a female consistency index containing kmers present in all female samples.
+5. Identify male-specific kmer candidates from male-consistent kmers.
+6. Identify female-specific kmer candidates from female-consistent kmers.
+7. Apply cross-sex exclusion to obtain true MSK and FSK.
+8. Build a full make/female union count table.
+9. Identify male-biased and female-biased kmers using fold-change filtering.
+10. Identify neutral k-mers without strong sex-specific or sex-biased signal.
+```
 
 ## SEXmer reads
 SEXmer reads use bbduk.sh from the BBMAP package to extract reads using kmer. We chose to implement bbduk over other tools because bbduk runs very fast and uses less RAM. Not just for WGS short paired reads, bbduk can also be used to extract specific reads from long-read sequencing. This module works by matching the given kmer sequence to reads. If a read hits the given kmer, bbduk will keep it. For WGS paired-end, bbduk writes both mates if either mate has at least the minimum marker hits. The minimum hits for WGS short reads is 1, while short read sequencing should have a minimum hits >1. Based on our experience, at least 3 hits should be sufficient for long-read extraction.
