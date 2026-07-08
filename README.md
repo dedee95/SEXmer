@@ -2,15 +2,15 @@
 ![Python Version](https://img.shields.io/badge/python-3.8+-blue.svg)
 ![GPL v3 license](https://img.shields.io/badge/License-GPLv3-blue.svg)
 
-Identifying the sex determination region (SDR) in some plants or animals requires huge effort, especially for XY and ZW sex types. To detect SDR robustly, we generally need population samples for both male and female individuals. This study often produces large whole-genome sequencing (WGS) data. K-mer-based method is a powerful strategy for detecting the sex determination region. However, processing population-scale kmer data requires huge computational resources.
+Identifying the sex determination region (SDR) in some plants or animals requires huge effort, especially for XY and ZW sex types. To detect SDR robustly, we generally need population samples for both male and female individuals. This study often generates large amounts of whole-genome sequencing (WGS) data. A kmer-based method is a powerful strategy for detecting the sex determination region. However, processing population-scale kmer data requires huge computational resources.
 
-Here we present SEXmer, a fast and resource-efficient command-line tool for sex determination region analysis based on kmer.  **"SEXmer provides a modular workflow from raw reads to sex-specific k-mer discovery, kmer based reads extraction, unknown sex classifier, and genomic localization of candidate SDR signals."**
+Here we present SEXmer, a fast and resource-efficient command-line tool for sex determination region analysis based on kmer. "**SEXmer provides a modular workflow from raw reads to sex-specific k-mer discovery, kmer-based reads extraction, an unknown sex classifier, and genomic localization of candidate SDR signals.**"
 
 Currently, SEXmer contain 5 modules:
 ![SEXmer module list](docs/SEXmer-module.png)
 
 ## Important!
-- A detail algorithm for each SEXmer module can be read [here](docs/detail_algorithm.md).
+- A detailed algorithm for each SEXmer module can be read [here](docs/detail_algorithm.md).
 - SEXmer is already available in [DCS Cloud](https://www.dcs.cloud/).
 
 ## Table of Contents
@@ -31,7 +31,7 @@ Currently, SEXmer contain 5 modules:
 
 
 ## Getting Started
-SEXmer command line tool currently only available for Linux (tested on Ubuntu and CentOS). SEXmer is implemented as a bash script, embedded with Python, and using some external dependencies.
+SEXmer command-line tool is currently only available for Linux (tested on Ubuntu and CentOS). SEXmer is implemented as a bash script, embedded with Python, and using some external dependencies.
 
 **Dependencies**
 - [Python3](https://www.python.org/) (>3.8, tested on 3.10)
