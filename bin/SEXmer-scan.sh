@@ -5,7 +5,7 @@
 set -euo pipefail
 export LC_ALL=C
 
-MIN_COUNT=3
+MIN_COUNT=10
 MAX_COUNT=1000
 FOLD_THRESHOLD=5
 PREFIX="output"
