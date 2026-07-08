@@ -291,6 +291,6 @@ Output files should be as follows:
 SEXmer is designed specifically for XY and ZW sex type with known male and female samples. Robutstness of sex-specific kmer (MSK or FSK) depends on sample quality, sample number, and sequencing depth. You truly need to have high confidence when labeling male and female samples for SEXmer. When you have a misclassified sample, SEXmer will perform poorly.
 
 ## Contact information
-If you have any questions or suggestions regarding SEXmer, feel free to contact one of the contacts below.
+If you have any questions or suggestions regarding SEXmer, feel free to contact me.
 - Linkedin: [https://www.linkedin.com/in/dede-kurniawann/](https://www.linkedin.com/in/dede-kurniawann/)
 - E-mail: [dedekurniawan@genomics.cn](mailto:dedekurniawan@genomics.cn)
