@@ -12,24 +12,30 @@ To reduce the output data, we implemented a minimum k-mer count and a trigger se
 Identify SEX association kmer.
 
 ## SEXmer reads
-SEXmer reads use bbduk.sh from the BBMAP package to extract reads using kmer. We chose to implement bbduk over other tools because bbduk runs very fast and uses less RAM. Not just for WGS short paired reads, bbduk can also be used to extract specific reads from long-read sequencing. This module works by matching the given kmer sequence to reads. If a read hits the given kmer, bbduk will keep it. For WGS paired-end, bbduk writes both mates if either mate has at least the minimum marker hits. The minimum hits for WGS short reads is 1, while short read sequencing should have a minimum of more than 1. Based on our experience, at least 3 hits should be sufficient for long-read extraction.
+SEXmer reads use bbduk.sh from the BBMAP package to extract reads using kmer. We chose to implement bbduk over other tools because bbduk runs very fast and uses less RAM. Not just for WGS short paired reads, bbduk can also be used to extract specific reads from long-read sequencing. This module works by matching the given kmer sequence to reads. If a read hits the given kmer, bbduk will keep it. For WGS paired-end, bbduk writes both mates if either mate has at least the minimum marker hits. The minimum hits for WGS short reads is 1, while short read sequencing should have a minimum hits >1. Based on our experience, at least 3 hits should be sufficient for long-read extraction.
 
 ## SEXmer map
-The core function of this module is to identify genomic regions enriched with a specific kmer. In simple terms, the SEXmer map asks, "Where are sex-specific kmer sequences located and enriched in the genome?" SEXmer takes a sex-specific kmer sequence (MSK or FSK) and identifies its enrichment in the genome using a rapid kmer-based genome-scanning approach. This method is much faster than traditional alignment like BWA-MEM2. Moreover, there is no need to split the chromosome into multiple chunks if it is too large, as in BWA-MEM2. Here are the details on how this algorithm works
+The core function of this module is to identify genomic regions enriched with a specific kmer. In simple terms, the SEXmer map asks, "Where are sex-specific kmer sequences located and enriched in the genome?" SEXmer takes a sex-specific kmer sequence (MSK or FSK) and identifies its enrichment in the genome using a rapid kmer-based genome-scanning approach. This approach is much faster than traditional alignment like BWA-MEM2 because it does not align reads to the genome. Instead, SEXmer map scans the reference genome and checks whether each genomic kmer exists in the sex-specific marker set.
 
+SEXmer map core algorithm use 2-bit integer encoding and rolling kmer scanning.
 
 ```
 1. Convert a sex-specific kmer sequence into a 2-bit encoded integer and store it in a hash-based marker index.
-2. Scan the reference genome sequentially using a rolling integer kmer scanning algorithm. 
+2. Scan the reference genome sequentially using a rolling 2-bit integer scanner. 
 3. Generate each genomic kmer at the current position using efficient 2-bit operations (bit shifting, masking, and integer encoding). 
-4. Query each genomic kmer against the marker index using hash lookup. 
-5. If a match is detected, record the chromosome and genomic coordinate of the kmer hit. 
-6. Assign each detected kmer hit to overlapping sliding windows based on its genomic coordinate. 
-7. Count the number of marker hits within each window and normalize the hit density based on the number of valid genomic kmer sites. 
-8. Generate a genome-wide kmer enrichment profile for visualization and identification of candidate sex-determining regions.
+4. At each genomic position, update the current k-mer using bit shifting and masking.
+5. Skip kmers that contain non ATGC bases and query each valid genomic kmer against the marker index using hash lookup. 
+6. If a marker match is detected, record the chromosome and genomic coordinate of the kmer hit. 
+7. Assign each detected kmer hit to overlapping sliding windows based on its genomic coordinate. 
+8. Count the number of marker hits within each window and normalize the hit density based on the number of valid genomic kmer sites. 
+9. Generate a genome-wide kmer enrichment profile for for identifying candidate sex-determining regions.
 ```
 
-The SEXmer map also provides sex-specific reads that map to the sex determination region, providing more evidence of sex determination. This module asks: "Do actual sequencing reads support the genomic location identified by sex-specific kmers?" The main computational engine for this step is BBMap, which can map both short-read and long-read sequencing data. The main actor of this part is bbmap. It can map both WGS short reads and long reads. But bbmap has a limit for mapping large genomes, so SEXmer map splits the large genome into several chunks. Also, bbmap splits the long reads into 6000 bp pieces. So, the reads mapping here is just to facilitate double validation of SDR. If comprehensive mapping is needed, BWA-MEM2 or minimap2 is a better option.
+The SEXmer map also provides an optional sex-specific read validation mode. This feature facilitates more evidence of sex determination. This module asks: "Do actual sequencing reads support the genomic location identified by sex-specific kmers?" 
+
+The main computational engine for this step is BBMap, which can map both short-read and long-read sequencing data. For short-read data, SEXmer map uses bbmap.sh. For long-read data, it first splits long reads into smaller pieces and then uses mapPacBio.sh when available, or falls back to bbmap.sh. But bbmap has a limit for mapping large genomes, so SEXmer map splits the large genome into several chunks. Also, bbmap splits the long reads into 6000 bp pieces. 
+
+>*However, read validation in SEXmer map is intended as a quick supporting analysis rather than a full replacement for dedicated read-alignment workflows.*
 
 
 ## SEXmer assign
