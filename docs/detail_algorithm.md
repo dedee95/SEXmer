@@ -53,18 +53,19 @@ SEXmer takes a sex-specific kmer sequence (MSK or FSK) and identifies its enrich
 SEXmer map core algorithm use 2-bit integer encoding and rolling kmer scanning.
 
 ```
-1. Convert a sex-specific kmer sequence into a 2-bit encoded integer and store it in a hash-based marker index.
-2. Scan the reference genome sequentially using a rolling 2-bit integer scanner. 
-3. Generate each genomic kmer at the current position using efficient 2-bit operations (bit shifting, masking, and integer encoding). 
-4. At each genomic position, update the current kmer using bit shifting and masking.
-5. Skip kmers that contain non ATGC bases and query each valid genomic kmer against the marker index using hash lookup. 
-6. If a marker match is detected, record the chromosome and genomic coordinate of the kmer hit. 
-7. Assign each detected kmer hit to overlapping sliding windows based on its genomic coordinate. 
-8. Count the number of marker hits within each window and normalize the hit density based on the number of valid genomic kmer sites. 
-9. Generate a genome-wide kmer enrichment profile for for identifying candidate sex-determining regions.
+1. Convert a sex-specific kmer sequence into a 2-bit encoded integer and store it in a hash-based marker index. 
+2. Generate the reverse complement of each marker, encode it as a 2-bit integer, and store it in a hash.
+3. Scan the reference genome sequentially using a rolling 2-bit integer scanner. 
+4. Generate each genomic kmer at the current position using efficient 2-bit operations (bit shifting, masking, and integer encoding). 
+5. At each genomic position, update the current kmer using bit shifting and masking.
+6. Skip kmers that contain non ATGC bases and query each valid genomic kmer against the marker index using hash lookup. 
+7. If a marker match is detected, record the chromosome and genomic coordinate of the kmer hit. 
+8. Assign each detected kmer hit to overlapping sliding windows based on its genomic coordinate. 
+9. Count the number of marker hits within each window and normalize the hit density based on the number of valid genomic kmer sites. 
+10. Generate a genome-wide kmer enrichment profile for for identifying candidate sex-determining regions.
 ```
 
-The SEXmer map also provides an optional sex-specific read validation mode. This feature facilitates more evidence of sex determination. This feature asks
+The `SEXmer map` also provides an optional sex-specific read validation mode. This feature facilitates more evidence of sex determination. This feature asks
 
 >Do actual sequencing reads support the genomic location identified by sex-specific kmers?
 
