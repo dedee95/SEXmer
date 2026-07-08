@@ -50,6 +50,8 @@ The core function of this module is to identify genomic regions enriched with a 
 
 SEXmer takes a sex-specific kmer sequence (MSK or FSK) and identifies its enrichment in the genome using a rapid kmer-based genome-scanning approach. This approach is much faster than traditional alignment like BWA-MEM2 because it does not align reads to the genome. Instead, SEXmer map scans the reference genome and checks whether each genomic kmer exists in the sex-specific marker set.
 
+<img src="./SEXmer-map-algo.png" alt="How SEXmer map works" width="700">
+
 SEXmer map core algorithm use 2-bit integer encoding and rolling kmer scanning.
 
 ```
