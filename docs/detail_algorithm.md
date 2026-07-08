@@ -23,7 +23,7 @@ This module takes input kmer dump sequences generated from known male and female
 FBK     | Female-biased kmer. Present in every female, and the female pooled count is at least `fold-threshold` times higher than the male count.   |
 neutral | Present in union of both sexes |
 
-<img src="./SEXmer-scan-algo1.png" alt="How SEXmer scan works part 1" width="600">
+<img src="./SEXmer-scan-algo1.png" alt="How SEXmer scan works part 1" width="700">
 
 SEXmer scan fully uses disk-based operation built around GNU sort, join, and awk. This design allows SEXmer to process large kmer data without loading all kmer into memory at once. Technically, 8 GB of RAM is enough to run this process even if your kmer dump file is very large.
 
