@@ -88,7 +88,7 @@ else
         error "At most one positional marker FASTA file is allowed."; usage >&2; exit 1; }
     if [[ ${#POSITIONAL[@]} -eq 1 ]]; then
         MARKERS="${POSITIONAL[0]}"
-        warn "Marker FASTA positional argument is ignored in --sic mode; markers are regenerated from -m/--male and -f/--female."
+        [[ -r "$MARKERS" ]] || { error "Cannot read marker FASTA file: $MARKERS"; exit 1; }
     fi
 fi
 
@@ -222,6 +222,11 @@ info "Parameters: kmer-size=${KMER_SIZE}, type=${TYPE}"
 info "Settings  : threads=${THREADS}"
 if [[ "$SIC_ENABLED" -eq 1 ]]; then
     info "SIC mode       : enabled"
+    if [[ -n "$MARKERS" ]]; then
+        info "Initial marker : ${MARKERS}"
+    else
+        info "Initial marker : generated from known samples"
+    fi
     info "Known male     : ${#MALE_FILES[@]} sample(s)"
     info "Known female   : ${#FEMALE_FILES[@]} sample(s)"
 else
@@ -247,6 +252,7 @@ import math
 import multiprocessing as mp
 import os
 import re
+import subprocess
 import sys
 from typing import Dict, Iterator, List, Optional, Sequence, Set, Tuple
 
@@ -260,16 +266,13 @@ SIC_MAX_ITER = 10
 SIC_STRONG_GAP = 50.0
 SIC_PATIENCE = 2
 
-
 def log(kind: str, msg: str) -> None:
     print(f"[{kind}] {msg}", file=sys.stderr)
-
 
 def open_text(path: str):
     if path.endswith(".gz"):
         return gzip.open(path, "rt")
     return open(path, "rt")
-
 
 def parse_fasta(path: str) -> Iterator[Tuple[str, str]]:
     name: Optional[str] = None
@@ -289,7 +292,6 @@ def parse_fasta(path: str) -> Iterator[Tuple[str, str]]:
         if name is not None:
             yield name, "".join(chunks)
 
-
 def encode_kmer(seq: str, k: int) -> Optional[int]:
     if len(seq) != k:
         return None
@@ -301,7 +303,6 @@ def encode_kmer(seq: str, k: int) -> Optional[int]:
             return None
         code = (code << 2) | val
     return code
-
 
 def iter_encoded_kmers_from_sequence(seq: str, k: int) -> Iterator[int]:
     if len(seq) < k:
@@ -320,7 +321,6 @@ def iter_encoded_kmers_from_sequence(seq: str, k: int) -> Iterator[int]:
         run += 1
         if run >= k:
             yield code
-
 
 def load_marker_kmers(path: str, k: int) -> Tuple[Set[int], Dict[str, int]]:
     kmers: Set[int] = set()
@@ -359,6 +359,13 @@ def load_marker_kmers(path: str, k: int) -> Tuple[Set[int], Dict[str, int]]:
         raise ValueError(f"No valid marker k-mers were generated from: {path}")
     return kmers, stats
 
+def load_marker_kmers_if_any(path: str, k: int) -> Tuple[Set[int], Dict[str, int]]:
+    try:
+        return load_marker_kmers(path, k)
+    except ValueError as exc:
+        if str(exc).startswith("No valid marker k-mers were generated"):
+            return set(), {"records": 0, "short_records": 0, "exact_kmer_records": 0, "long_records": 0, "bad_exact_records": 0, "raw_kmers": 0, "unique_kmers": 0}
+        raise
 
 def read_sample_table(path: str) -> List[Tuple[int, str, str]]:
     rows: List[Tuple[int, str, str]] = []
@@ -374,7 +381,6 @@ def read_sample_table(path: str) -> List[Tuple[int, str, str]]:
             rows.append((idx, sample, dump_path))
     return rows
 
-
 def infer_marker_label(path: str, type_: str) -> Tuple[str, str]:
     base = os.path.basename(path).lower()
     if "msk" in base:
@@ -386,7 +392,6 @@ def infer_marker_label(path: str, type_: str) -> Tuple[str, str]:
     if type_ == "ZW":
         return "FSK", "type"
     return "marker", "unknown"
-
 
 def iter_dump(path: str, k: int) -> Iterator[Tuple[int, int]]:
     with open_text(path) as fh:
@@ -408,11 +413,9 @@ def iter_dump(path: str, k: int) -> Iterator[Tuple[int, int]]:
             if count > 0:
                 yield code, count
 
-
 def init_worker(markers: Set[int]) -> None:
     global _G_MARKERS
     _G_MARKERS = markers
-
 
 def scan_dump_worker(item: Tuple[int, str, str, int]) -> Dict[str, object]:
     assert _G_MARKERS is not None
@@ -443,7 +446,6 @@ def scan_dump_worker(item: Tuple[int, str, str, int]) -> Dict[str, object]:
         "marker_detected": marker_detected,
     }
 
-
 def scan_samples(samples: List[Tuple[int, str, str]], markers: Set[int], k: int, threads: int) -> List[Dict[str, object]]:
     items = [(order, sample, dump_path, k) for order, sample, dump_path in samples]
     workers = min(threads, len(items)) if items else 1
@@ -461,44 +463,127 @@ def scan_samples(samples: List[Tuple[int, str, str]], markers: Set[int], k: int,
         r["marker_ratio"] = pct(int(r["marker_detected"]), marker_total)
     return results
 
+def write_scan_lite_script(path: str) -> None:
+    script = r'''#!/usr/bin/env bash
+set -euo pipefail
+TMP="$1"
+THREADS="$2"
+K="$3"
+MIN_COUNT="$4"
+MAX_COUNT="$5"
+shift 5
+male_files=()
+female_files=()
+mode="male"
+for f in "$@"; do
+    if [[ "$f" == "--" ]]; then
+        mode="female"
+        continue
+    fi
+    if [[ "$mode" == "male" ]]; then
+        male_files+=("$f")
+    else
+        female_files+=("$f")
+    fi
+done
+open_file() {
+    local f="$1"
+    if [[ "$f" == *.gz ]]; then
+        gzip -dc "$f"
+    else
+        cat "$f"
+    fi
+}
+aggregate_counts() {
+    local label="$1" outfile="$2"
+    shift 2
+    local files=("$@")
+    local i
+    for i in "${!files[@]}"; do
+        open_file "${files[$i]}" \
+        | awk -v k="$K" '$2 > 0 && length($1) == k && $1 ~ /^[ACGTacgt]+$/ { print toupper($1), $2 }' \
+        | sort -k1,1 --parallel="$THREADS" -T "$TMP" \
+        > "$TMP/${label}_agg_sorted_${i}.txt" &
+    done
+    wait
+    sort -m -k1,1 --parallel="$THREADS" -T "$TMP" "$TMP"/${label}_agg_sorted_*.txt \
+    | awk 'BEGIN { prev=""; sum=0 } { if ($1 == prev) { sum += $2 } else { if (prev != "") print prev, sum; prev = $1; sum = $2 } } END { if (prev != "") print prev, sum }' \
+    > "$outfile"
+}
+build_consistency_index() {
+    local label="$1" outfile="$2" n_files="$3"
+    shift 3
+    local files=("$@")
+    local i
+    for i in "${!files[@]}"; do
+        open_file "${files[$i]}" \
+        | awk -v k="$K" '$2 > 0 && length($1) == k && $1 ~ /^[ACGTacgt]+$/ { print toupper($1) }' \
+        | sort -u --parallel="$THREADS" -T "$TMP" \
+        > "$TMP/${label}_presence_${i}.txt" &
+    done
+    wait
+    sort -m --parallel="$THREADS" -T "$TMP" "$TMP"/${label}_presence_*.txt \
+    | uniq -c \
+    | awk -v n="$n_files" '$1 == n { print $2 }' \
+    > "$outfile"
+}
+aggregate_counts "male" "$TMP/male_agg.txt" "${male_files[@]}"
+aggregate_counts "female" "$TMP/female_agg.txt" "${female_files[@]}"
+build_consistency_index "male" "$TMP/male_consistent.txt" "${#male_files[@]}" "${male_files[@]}"
+build_consistency_index "female" "$TMP/female_consistent.txt" "${#female_files[@]}" "${female_files[@]}"
+join "$TMP/male_consistent.txt" "$TMP/male_agg.txt" | awk -v mn="$MIN_COUNT" -v mx="$MAX_COUNT" '$2 >= mn && $2 <= mx' > "$TMP/msk_candidates.txt"
+join "$TMP/female_consistent.txt" "$TMP/female_agg.txt" | awk -v mn="$MIN_COUNT" -v mx="$MAX_COUNT" '$2 >= mn && $2 <= mx' > "$TMP/fsk_candidates.txt"
+awk '{print $1}' "$TMP/female_agg.txt" > "$TMP/female_kmers.txt"
+awk '{print $1}' "$TMP/male_agg.txt" > "$TMP/male_kmers.txt"
+join -v 1 "$TMP/msk_candidates.txt" "$TMP/female_kmers.txt" > "$TMP/msk_final.txt"
+join -v 1 "$TMP/fsk_candidates.txt" "$TMP/male_kmers.txt" > "$TMP/fsk_final.txt"
+awk '{n++; printf ">MSK_%d count=%s\n%s\n", n, $2, $1}' "$TMP/msk_final.txt" > "$TMP/MSK.fa"
+awk '{n++; printf ">FSK_%d count=%s\n%s\n", n, $2, $1}' "$TMP/fsk_final.txt" > "$TMP/FSK.fa"
+'''
+    with open(path, "wt") as out:
+        out.write(script)
+    os.chmod(path, 0o755)
 
-def aggregate_group(samples: List[Tuple[int, str, str]], k: int) -> Tuple[Dict[int, int], Dict[int, int]]:
-    pooled: Dict[int, int] = {}
-    presence: Dict[int, int] = {}
-    for _order, _sample, path in samples:
-        seen: Set[int] = set()
-        for kmer, count in iter_dump(path, k):
-            pooled[kmer] = pooled.get(kmer, 0) + count
-            seen.add(kmer)
-        for kmer in seen:
-            presence[kmer] = presence.get(kmer, 0) + 1
-    return pooled, presence
-
-
-def generate_sex_markers(male_samples: List[Tuple[int, str, str]], female_samples: List[Tuple[int, str, str]], k: int) -> Tuple[Set[int], Set[int], Dict[str, int]]:
-    male_counts, male_presence = aggregate_group(male_samples, k)
-    female_counts, female_presence = aggregate_group(female_samples, k)
-    n_male = len(male_samples)
-    n_female = len(female_samples)
-
-    msk = {
-        kmer for kmer, count in male_counts.items()
-        if male_presence.get(kmer, 0) == n_male and MIN_COUNT <= count <= MAX_COUNT and kmer not in female_counts
-    }
-    fsk = {
-        kmer for kmer, count in female_counts.items()
-        if female_presence.get(kmer, 0) == n_female and MIN_COUNT <= count <= MAX_COUNT and kmer not in male_counts
-    }
-    stats = {
-        "MSK": len(msk),
-        "FSK": len(fsk),
-        "male_unique": len(male_counts),
-        "female_unique": len(female_counts),
-        "male_count": n_male,
-        "female_count": n_female,
-    }
-    return msk, fsk, stats
-
+def generate_sex_markers(male_samples: List[Tuple[int, str, str]], female_samples: List[Tuple[int, str, str]], k: int, tmp_parent: str, threads: int) -> Tuple[Set[int], Set[int], Dict[str, int]]:
+    if not male_samples or not female_samples:
+        raise ValueError("Scan-lite marker generation requires at least one male and one female reference sample")
+    tmp = os.path.join(tmp_parent, f"scan_lite_{os.getpid()}_{len(male_samples)}_{len(female_samples)}")
+    os.makedirs(tmp, exist_ok=True)
+    script_path = os.path.join(tmp, "scan_lite.sh")
+    write_scan_lite_script(script_path)
+    male_paths = [path for _order, _sample, path in male_samples]
+    female_paths = [path for _order, _sample, path in female_samples]
+    cmd = ["bash", script_path, tmp, str(max(1, threads)), str(k), str(MIN_COUNT), str(MAX_COUNT), *male_paths, "--", *female_paths]
+    try:
+        proc = subprocess.run(cmd, text=True, capture_output=True)
+        if proc.returncode != 0:
+            msg = proc.stderr.strip() or proc.stdout.strip() or "scan-lite marker generation failed"
+            raise RuntimeError(msg)
+        msk, _msk_stats = load_marker_kmers_if_any(os.path.join(tmp, "MSK.fa"), k)
+        fsk, _fsk_stats = load_marker_kmers_if_any(os.path.join(tmp, "FSK.fa"), k)
+        stats = {
+            "MSK": len(msk),
+            "FSK": len(fsk),
+            "male_count": len(male_samples),
+            "female_count": len(female_samples),
+        }
+        return msk, fsk, stats
+    finally:
+        for root, dirs, files in os.walk(tmp, topdown=False):
+            for name in files:
+                try:
+                    os.unlink(os.path.join(root, name))
+                except OSError:
+                    pass
+            for name in dirs:
+                try:
+                    os.rmdir(os.path.join(root, name))
+                except OSError:
+                    pass
+        try:
+            os.rmdir(tmp)
+        except OSError:
+            pass
 
 def build_classification_model(values: Sequence[float]) -> Dict[str, object]:
     if not values:
@@ -569,14 +654,11 @@ def build_classification_model(values: Sequence[float]) -> Dict[str, object]:
         "warning": warning,
     }
 
-
 def high_signal_sex(type_: str) -> str:
     return "male" if type_ == "XY" else "female"
 
-
 def low_signal_sex(type_: str) -> str:
     return "female" if type_ == "XY" else "male"
-
 
 def assign_sex(score: float, type_: str, model: Dict[str, object]) -> str:
     method = str(model["method"])
@@ -588,7 +670,6 @@ def assign_sex(score: float, type_: str, model: Dict[str, object]) -> str:
     if score <= 20.0:
         return low_signal_sex(type_)
     return "ambiguous"
-
 
 def confidence_for_ratio(score: float, model: Dict[str, object]) -> str:
     method = str(model["method"])
@@ -607,12 +688,10 @@ def confidence_for_ratio(score: float, model: Dict[str, object]) -> str:
         return "high"
     return "medium"
 
-
 def pct(num: int, den: int) -> float:
     if den <= 0:
         return 0.0
     return (num / den) * 100.0
-
 
 def fmt_float(value: object, digits: int = 4, percent: bool = False) -> str:
     if value is None:
@@ -626,7 +705,6 @@ def fmt_float(value: object, digits: int = 4, percent: bool = False) -> str:
     text = f"{f:.{digits}f}"
     return f"{text}%" if percent else text
 
-
 def marker_names(marker_label: str) -> Tuple[str, str, str, str, str]:
     if marker_label in {"MSK", "FSK"}:
         return (
@@ -637,7 +715,6 @@ def marker_names(marker_label: str) -> Tuple[str, str, str, str, str]:
             f"{marker_label} ratio (%)",
         )
     return "sex_marker_detected", "sex_marker_total", "sex_marker_ratio(%)", "Sex-marker-ratio", "sex marker ratio (%)"
-
 
 def write_report(out_path: str, type_: str, marker_label: str, marker_label_source: str, marker_stats: Dict[str, int], results: List[Dict[str, object]], threshold_info: Dict[str, object]) -> None:
     marker_total = int(marker_stats["unique_kmers"])
@@ -685,7 +762,6 @@ def write_report(out_path: str, type_: str, marker_label: str, marker_label_sour
         if marker_label_source == "type":
             out.write(f"Marker label was inferred from --type {type_}; use MSK naming for XY or FSK naming for ZW to make it explicit.\n")
 
-
 def select_candidate(pending: List[Tuple[int, str, str]], latest: Dict[str, float], sex: str, type_: str) -> Optional[Tuple[int, str, str]]:
     if not pending:
         return None
@@ -701,7 +777,6 @@ def select_candidate(pending: List[Tuple[int, str, str]], latest: Dict[str, floa
     if latest.get(best[1], 100.0) >= 80.0:
         return None
     return best
-
 
 def write_sic_report(out_path: str, marker_label: str, male_original: List[Tuple[int, str, str]], female_original: List[Tuple[int, str, str]], known_final: Dict[str, float], unknown_original: List[Tuple[int, str, str]], round_records: Dict[str, List[Dict[str, str]]], round_summaries: List[Dict[str, str]], final_results: List[Dict[str, object]]) -> None:
     final_sex = {str(r["sample"]): str(r["assignment"]) for r in final_results}
@@ -745,7 +820,6 @@ def write_sic_report(out_path: str, marker_label: str, male_original: List[Tuple
                 rec.get("pseudo_label", "NA"),
                 rec.get("stop_reason", "NA"),
             ]) + "\n")
-
 
 def run_standard(args: argparse.Namespace) -> int:
     marker_label, marker_label_source = infer_marker_label(args.markers, args.type)
@@ -801,18 +875,69 @@ def run_sic(args: argparse.Namespace) -> int:
     final_model: Dict[str, object] = {}
     final_markers: Set[int] = set()
     stop_reason = "max_iteration_reached"
+    decision_markers: Set[int] = set()
+    msk_count = 0
+    fsk_count = 0
+    markers_need_refresh = True
 
     log("Info", "SIC started.")
-    for iteration in range(1, SIC_MAX_ITER + 1):
-        msk, fsk, marker_stats = generate_sex_markers(male_current, female_current, args.kmer_size)
-        decision_markers = msk if marker_label == "MSK" else fsk
-        if not decision_markers:
-            raise ValueError(f"No {marker_label} markers were generated in SIC round {iteration}.")
-        log("Info", f"SIC round {iteration}: generated {len(msk)} MSK and {len(fsk)} FSK k-mers with 2-bit integer markers.")
+    log("Info", f"  Initial male references   : {len(male_current)}")
+    log("Info", f"  Initial female references : {len(female_current)}")
+    log("Info", f"  Unknown candidates        : {len(pending)}")
 
-        all_unknown_results = scan_samples(unknown_original, decision_markers, args.kmer_size, args.threads)
-        latest = {str(r["sample"]): float(r["marker_ratio"]) for r in all_unknown_results}
-        model = build_classification_model([float(r["marker_ratio"]) for r in all_unknown_results])
+    for iteration in range(1, SIC_MAX_ITER + 1):
+        if iteration == 1 and args.markers:
+            decision_markers, loaded_stats = load_marker_kmers(args.markers, args.kmer_size)
+            msk_count = len(decision_markers) if marker_label == "MSK" else 0
+            fsk_count = len(decision_markers) if marker_label == "FSK" else 0
+            source = "provided FASTA"
+            log("Info", f"SIC round {iteration}: using provided {marker_label} marker FASTA.")
+            log("Info", f"  FASTA records       : {loaded_stats['records']}")
+        elif markers_need_refresh:
+            msk, fsk, marker_stats = generate_sex_markers(male_current, female_current, args.kmer_size, os.path.dirname(args.out) or ".", args.threads)
+            decision_markers = msk if marker_label == "MSK" else fsk
+            msk_count = int(marker_stats["MSK"])
+            fsk_count = int(marker_stats["FSK"])
+            source = "scan-lite regenerated"
+            log("Info", f"SIC round {iteration}: generated markers with shell scan-lite.")
+        else:
+            source = "previous round markers"
+            log("Info", f"SIC round {iteration}: reusing previous markers.")
+
+        if not decision_markers:
+            raise ValueError(f"No {marker_label} markers are available in SIC round {iteration}.")
+
+        log("Info", f"  Marker source       : {source}")
+        log("Info", f"  Male references     : {len(male_current)}")
+        log("Info", f"  Female references   : {len(female_current)}")
+        log("Info", f"  MSK k-mers          : {msk_count}")
+        log("Info", f"  FSK k-mers          : {fsk_count}")
+        log("Info", f"  Decision marker     : {marker_label}")
+        log("Info", f"  Remaining unknowns  : {len(pending)}")
+        log("Info", "  Scanner backend     : 2-bit integer exact matching")
+
+        if not pending:
+            stop_reason = "no_remaining_unknown"
+            final_markers = decision_markers
+            final_results = scan_samples(unknown_original, final_markers, args.kmer_size, args.threads)
+            final_model = build_classification_model([float(r["marker_ratio"]) for r in final_results])
+            round_summaries.append({
+                "round": str(iteration),
+                "male_count": str(len(male_current)),
+                "female_count": str(len(female_current)),
+                "marker_type": marker_label,
+                "largest_gap": fmt_float(final_model["largest_gap"], 4),
+                "added_sample": "NA",
+                "pseudo_label": "NA",
+                "stop_reason": stop_reason,
+            })
+            break
+
+        scan_targets = pending
+        scanned_results = scan_samples(scan_targets, decision_markers, args.kmer_size, args.threads)
+        latest = {str(r["sample"]): float(r["marker_ratio"]) for r in scanned_results}
+        model_targets = scanned_results if len(scanned_results) >= 2 else scan_samples(unknown_original, decision_markers, args.kmer_size, args.threads)
+        model = build_classification_model([float(r["marker_ratio"]) for r in model_targets])
         largest_gap = float(model["largest_gap"])
         if largest_gap > best_gap:
             best_gap = largest_gap
@@ -820,27 +945,35 @@ def run_sic(args: argparse.Namespace) -> int:
         else:
             no_improve += 1
 
+        log("Info", f"  Largest gap         : {largest_gap:.4f}%")
+        log("Info", f"  Separation          : {model['separation']}")
+
         added_samples: List[str] = []
         added_labels: List[str] = []
-        pending_names = {sample for _order, sample, _path in pending}
+        scanned_names = {str(r["sample"]) for r in scanned_results}
 
-        for r in all_unknown_results:
+        for r in scanned_results:
             sample = str(r["sample"])
-            action = "pending" if sample in pending_names else "reference"
-            pseudo_label = "NA"
             round_records[sample].append({
                 "ratio": fmt_float(r["marker_ratio"], 4),
-                "pseudo_label": pseudo_label,
-                "action": action,
+                "pseudo_label": "NA",
+                "action": "pending",
             })
+        for _order, sample, _path in unknown_original:
+            if sample not in scanned_names and round_records.get(sample):
+                round_records[sample].append({
+                    "ratio": "NA",
+                    "pseudo_label": "NA",
+                    "action": "reference",
+                })
 
         need_male = len(male_current) < SIC_MIN_REF
         need_female = len(female_current) < SIC_MIN_REF
         if not need_male and not need_female and largest_gap >= SIC_STRONG_GAP:
             stop_reason = "minimum_reference_and_strong_gap_reached"
-            final_results = all_unknown_results
-            final_model = model
             final_markers = decision_markers
+            final_results = scan_samples(unknown_original, final_markers, args.kmer_size, args.threads)
+            final_model = build_classification_model([float(r["marker_ratio"]) for r in final_results])
             round_summaries.append({
                 "round": str(iteration),
                 "male_count": str(len(male_current)),
@@ -854,9 +987,9 @@ def run_sic(args: argparse.Namespace) -> int:
             break
         if len(male_current) >= SIC_TARGET_REF and len(female_current) >= SIC_TARGET_REF:
             stop_reason = "target_reference_reached"
-            final_results = all_unknown_results
-            final_model = model
             final_markers = decision_markers
+            final_results = scan_samples(unknown_original, final_markers, args.kmer_size, args.threads)
+            final_model = build_classification_model([float(r["marker_ratio"]) for r in final_results])
             round_summaries.append({
                 "round": str(iteration),
                 "male_count": str(len(male_current)),
@@ -870,9 +1003,9 @@ def run_sic(args: argparse.Namespace) -> int:
             break
         if no_improve >= SIC_PATIENCE:
             stop_reason = "no_largest_gap_improvement"
-            final_results = all_unknown_results
-            final_model = model
             final_markers = decision_markers
+            final_results = scan_samples(unknown_original, final_markers, args.kmer_size, args.threads)
+            final_model = build_classification_model([float(r["marker_ratio"]) for r in final_results])
             round_summaries.append({
                 "round": str(iteration),
                 "male_count": str(len(male_current)),
@@ -898,9 +1031,9 @@ def run_sic(args: argparse.Namespace) -> int:
             targets = ["female"]
         else:
             stop_reason = "reference_size_sufficient"
-            final_results = all_unknown_results
-            final_model = model
             final_markers = decision_markers
+            final_results = scan_samples(unknown_original, final_markers, args.kmer_size, args.threads)
+            final_model = build_classification_model([float(r["marker_ratio"]) for r in final_results])
             round_summaries.append({
                 "round": str(iteration),
                 "male_count": str(len(male_current)),
@@ -927,12 +1060,13 @@ def run_sic(args: argparse.Namespace) -> int:
             if round_records.get(candidate[1]):
                 round_records[candidate[1]][-1]["pseudo_label"] = target
                 round_records[candidate[1]][-1]["action"] = "added_to_known"
+            log("Info", f"  Added pseudo-label : {candidate[1]} -> {target} ({latest.get(candidate[1], 0.0):.4f}%)")
 
         if not added_samples:
             stop_reason = "no_confident_pseudo_label"
-            final_results = all_unknown_results
-            final_model = model
             final_markers = decision_markers
+            final_results = scan_samples(unknown_original, final_markers, args.kmer_size, args.threads)
+            final_model = build_classification_model([float(r["marker_ratio"]) for r in final_results])
             round_summaries.append({
                 "round": str(iteration),
                 "male_count": str(len(male_current)),
@@ -955,13 +1089,15 @@ def run_sic(args: argparse.Namespace) -> int:
             "pseudo_label": ",".join(added_labels),
             "stop_reason": "continue",
         })
-        final_results = all_unknown_results
-        final_model = model
+        markers_need_refresh = True
         final_markers = decision_markers
+        final_results = scan_samples(unknown_original, final_markers, args.kmer_size, args.threads)
+        final_model = build_classification_model([float(r["marker_ratio"]) for r in final_results])
 
     if not final_results:
-        msk, fsk, _marker_stats = generate_sex_markers(male_current, female_current, args.kmer_size)
-        final_markers = msk if marker_label == "MSK" else fsk
+        if not final_markers:
+            msk, fsk, _marker_stats = generate_sex_markers(male_current, female_current, args.kmer_size, os.path.dirname(args.out) or ".", args.threads)
+            final_markers = msk if marker_label == "MSK" else fsk
         final_results = scan_samples(unknown_original, final_markers, args.kmer_size, args.threads)
         final_model = build_classification_model([float(r["marker_ratio"]) for r in final_results])
 
@@ -973,7 +1109,7 @@ def run_sic(args: argparse.Namespace) -> int:
     marker_stats = {"unique_kmers": len(final_markers)}
     if final_model.get("warning"):
         log("Warning", str(final_model["warning"]))
-    if stop_reason not in {"minimum_reference_and_strong_gap_reached", "target_reference_reached", "reference_size_sufficient"}:
+    if stop_reason not in {"minimum_reference_and_strong_gap_reached", "target_reference_reached", "reference_size_sufficient", "no_remaining_unknown"}:
         log("Warning", f"SIC stopped with status: {stop_reason}.")
 
     write_report(args.out, args.type, marker_label, "SIC", marker_stats, final_results, final_model)
@@ -989,7 +1125,6 @@ def run_sic(args: argparse.Namespace) -> int:
     log("Info", f"  Largest gap   : {float(final_model['largest_gap']):.4f}%")
     log("Info", f"  Separation    : {final_model['separation']}")
     return 0
-
 
 def main() -> int:
     ap = argparse.ArgumentParser(add_help=False)
@@ -1017,7 +1152,6 @@ def main() -> int:
         log("Error", str(exc))
         return 1
 
-
 if __name__ == "__main__":
     sys.exit(main())
 PY
@@ -1033,6 +1167,7 @@ PY_ARGS=(
 
 if [[ "$SIC_ENABLED" -eq 1 ]]; then
     PY_ARGS+=(--sic --male-table "$MALE_TABLE" --female-table "$FEMALE_TABLE" --sic-report "$SIC_REPORT_OUT")
+    [[ -n "$MARKERS" ]] && PY_ARGS+=(--markers "$MARKERS")
 else
     PY_ARGS+=(--markers "$MARKERS")
 fi
