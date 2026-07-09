@@ -95,6 +95,8 @@ The SEXmer assign contains 2 classifiers:
 ### Standard classifier
 This classifier assigns unknown WGS samples based on the provided sex-specific kmer and the present ratio.
 
+<img src="./SEXmer-assign-algo1.png" alt="How SEXmer assign standard classifier works" width="800">
+
 ```
 1. Provide robust sex-specific kmer marker output from SEXmer scan.
 2. Each kmer sequence will be converted into a 2-bit encoded integer and stored in a hash-based marker index.
