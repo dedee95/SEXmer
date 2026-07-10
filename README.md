@@ -285,12 +285,12 @@ Optional:
 
 Output files should be as follows:
 ```
-<prefix>.assign.txt    | Summary information about sex assignment result. Some important information including, sex type, largest gap, separation, sex-specific kmer ratio, confident, etc.
+<prefix>.assign.txt     | Summary information about sex assignment result. Some important information including, sex type, largest gap, separation, sex-specific kmer ratio, confident, etc.
 ```
 
 If you enable --sic parameter, another output files should be as follows:
 ```
-<prefix>.SIC.report.txt | Summary information for each iteration step when running the SEXmer iterative classifier algorithm
+<prefix>.SIC.report.txt | Summary information for each iteration step when running the SEXmer iterative classifier algorithm.
 ```
 
 ## Frequently asked questions (FAQs)
