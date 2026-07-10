@@ -150,7 +150,7 @@ The main goal of this algorithm is to improve sex-specific kmer when the initial
 11. Perform final sex assignment using the optimized marker set.
 ```
 
-After all unknown samples are classified, we will have sufficient samples to generate robust sex-specific kmer (MSK/FSK). Then, we can choose 8 to 10 samples for both sexes for the final running of SEXmer assign.
+After all unknown samples are classified, we will have sufficient samples to generate robust sex-specific kmer (MSK/FSK). Then, we can choose 8 to 10 samples for both sexes for the final running of `SEXmer assign`.
 
 > *Generally, if the sex-specific kmer marker is already robust, the standard classifier will be sufficient. A robust kmer marker can be achieved by using at least 8 male and female WGS samples with sufficient depth (>=10). Moreover, if the known sample isn't enough and is not balanced, i.e., 5 male + 10 female, you can use the `--sic` parameter to enable the SEXmer iterative classifier. However, this algorithm is still in early development; it is somewhat unstable and may not work well if the known sample size is too small.*
 
