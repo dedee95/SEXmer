@@ -258,7 +258,8 @@ For XY sex type, use MSK as a sex-specific kmer marker and use FSK if the sex ty
 ```
 SEXmer assign - Assign sex from unknown samples using sex-specific k-mer (MSK or FSK).
 
-Usage: SEXmer assign <markers.fa> -i <dump_files> --type <XY|ZW> [OPTIONS]
+Usage:
+  SEXmer assign <markers.fa> -i <dump_files> --type <XY|ZW> [OPTIONS]
 
 Mandatory:
   <markers.fa>          Sex specific k-mer sequence, e.g. MSK.fa(.gz accepted)
@@ -267,8 +268,13 @@ Mandatory:
   -i, --input           K-mer dump file from unknown sample, separated by commas (.dump or .dump.gz)
   --type                Specify sex chromosome system: XY or ZW
 
+SIC mode:
+  --sic                 Enable SEXmer Iterative Classifier
+  -m, --male            Known male dump files, separated by commas. Required only with --sic
+  -f, --female          Known female dump files, separated by commas. Required only with --sic
+
 Optional:
-  -s, --sample          Specify each sample names, separated by commas. 
+  -s, --sample          Specify each sample names, separated by commas.
                         [default: derived from dump filename by removing .dump.gz/.dump]
   -k, --kmer-size       Specify k-mer size used for marker parsing     [default: ${KMER_SIZE}]
   -t, --threads         Specify CPU threads for this task              [default: ${THREADS}]
@@ -279,7 +285,12 @@ Optional:
 
 Output files should be as follows:
 ```
-<prefix>.assign.txt   | Summary information about sex assignment result. Some important information including, sex type, largest gap, separation, sex-specific kmer ratio, confident, etc.
+<prefix>.assign.txt    | Summary information about sex assignment result. Some important information including, sex type, largest gap, separation, sex-specific kmer ratio, confident, etc.
+```
+
+If you enable --sic parameter, another output files should be as follows:
+```
+<prefix>.SIC.report.txt | Summary information for each iteration step when running the SEXmer iterative classifier algorithm
 ```
 
 ## Frequently asked questions (FAQs)
